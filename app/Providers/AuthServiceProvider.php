@@ -47,6 +47,9 @@ class AuthServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+      \Illuminate\Support\Facades\Auth::provider('academy-eloquent', function ($app, array $config) {
+          return new \App\Auth\AcademyUserProvider($app['hash'], $config['model']);
+      });
       $this->registerPolicies();
       
       Gate::define('event', function ($user, $event) {
