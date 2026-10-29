@@ -1,0 +1,41 @@
+name: Academy backend checks
+on:
+  pull_request:
+  push:
+    branches: ['fix/academy-backend']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ':memory:'
+      SESSION_DRIVER: array
+      CACHE_DRIVER: array
+      MAIL_MAILER: log
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, pdo_mysql, mbstring, curl, fileinfo, gd, bcmath, xml, zip, intl
+          tools: composer:v2
+          coverage: none
+      - name: Verify original frontend is untouched
+        run: git diff --exit-code 95b17a73cad638d5db367937f9350d338a899e73 HEAD -- resources public
+      - name: Lint backend
+        run: |
+          git diff --name-only --diff-filter=ACMR 95b17a73cad638d5db367937f9350d338a899e73 HEAD -- '*.php' | while IFS= read -r file; do php -l "$file" || exit 1; done
+      - name: Install dependencies
+        run: |
+          cp .env.example .env
+          composer install --prefer-dist --no-interaction --no-progress
+          php artisan key:generate
+      - name: Test academy backend
+        run: php artisan test --filter=AcademyBackendTest

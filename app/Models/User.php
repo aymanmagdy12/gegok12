@@ -571,7 +571,7 @@ class User extends Authenticatable implements HasMedia
      */
     public function studentAcademicLatest()
     {
-        return $this->hasOne('App\Models\StudentAcademic','user_id','id')->orderByDesc('id')->limit(1);
+        return $this->hasOne('App\Models\StudentAcademic', 'user_id', 'id')->latestOfMany();
     }
 
     /**

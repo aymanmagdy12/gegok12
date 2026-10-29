@@ -13,6 +13,13 @@ Route::get('/', function () {
 
 Auth::routes();
 
+Route::middleware('auth')->prefix('learning')->group(function () {
+    Route::get('/students', [\App\Http\Controllers\LearningController::class, 'students']);
+    Route::get('/students/{student}', [\App\Http\Controllers\LearningController::class, 'show'])->whereNumber('student');
+    Route::get('/students/{student}/homework', [\App\Http\Controllers\LearningController::class, 'homework'])->whereNumber('student');
+    Route::get('/students/{student}/attendance', [\App\Http\Controllers\LearningController::class, 'attendance'])->whereNumber('student');
+});
+
 
 
 //Impersonate as teacher
@@ -55,6 +62,3 @@ Route::post( '/{slug}/admission-form/validationStudentDetail', 'AdmissionControl
 Route::post( '/{slug}/admission-form/validationAcademicDetail', 'AdmissionController@validationAcademicDetail' );
 Route::post( '/{slug}/admission-form/validationParentDetail', 'AdmissionController@validationParentDetail' );
 Route::post( '/{slug}/admission-form/validationPersonalDetail', 'AdmissionController@validationPersonalDetail' );
-
-
-
