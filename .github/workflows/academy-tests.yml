@@ -4,11 +4,16 @@ on:
     paths:
       - 'app/Http/Controllers/AcademyController.php'
       - 'app/Services/AcademyProgression.php'
+      - 'app/Services/AcademyBirthdays.php'
+      - 'app/Support/AcademyNavigation.php'
+      - 'app/Http/Middleware/AcademyDashboard.php'
+      - 'app/Http/Kernel.php'
       - 'routes/academy.php'
       - 'routes/web.php'
       - 'config/academy.php'
       - 'database/migrations/2026_10_29_220000_create_academy_progress_tables.php'
       - 'resources/views/academy/**'
+      - 'resources/views/layouts/**'
       - 'tests/Feature/AcademyWorkspaceTest.php'
       - '.github/workflows/academy-tests.yml'
   push:
@@ -39,6 +44,10 @@ jobs:
         run: |
           php -l app/Http/Controllers/AcademyController.php
           php -l app/Services/AcademyProgression.php
+          php -l app/Services/AcademyBirthdays.php
+          php -l app/Support/AcademyNavigation.php
+          php -l app/Http/Middleware/AcademyDashboard.php
+          php -l app/Http/Kernel.php
           php -l app/Http/Controllers/Auth/LoginController.php
           php -l routes/academy.php
           php -l routes/web.php

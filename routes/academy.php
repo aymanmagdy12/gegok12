@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth')->prefix('academy')->name('academy.')->group(function () {
     Route::get('/', [AcademyController::class, 'index'])->name('index');
+    Route::get('/birthdays', [AcademyController::class, 'birthdays'])->name('birthdays');
     Route::post('/groups', [AcademyController::class, 'storeGroup'])->name('groups.store');
     Route::get('/groups/{group}', [AcademyController::class, 'showGroup'])->whereNumber('group')->name('groups.show');
     Route::patch('/groups/{group}', [AcademyController::class, 'updateGroup'])->whereNumber('group')->name('groups.update');

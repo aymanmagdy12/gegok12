@@ -1,7 +1,7 @@
 @extends('academy.layout')
 @section('content')
 <h1>أهلًا، {{ $actor->name }}</h1>
-<p class="muted">الجروبات، تقدّم الطلاب، وفيدباك المدرّسين في مكان واحد.</p>
+<p class="muted">كل اللي تحتاجه ليوم تعلّم بسيط وممتع.</p>
 @if($counts)
 <div class="grid">
     <div class="card">الجروبات النشطة<div class="count">{{ $counts['groups'] }}</div></div>
@@ -9,13 +9,24 @@
     <div class="card">المدرّسون<div class="count">{{ $counts['teachers'] }}</div></div>
 </div>
 @endif
-<section class="card" aria-label="خريطة المنهج">
-    <h2>رحلة Bridge Academy</h2>
+<section class="card" aria-label="خريطة المنهج"><details>
+    <summary>رحلة Bridge Academy — 6 مستويات، وحدتين لكل مستوى</summary>
     <div class="levels">@for($level = 1; $level <= 6; $level++)<div class="level"><strong>المستوى {{ $level }}</strong><br><small>Unit 1 + Unit 2</small></div>@endfor</div>
     <p class="muted">بعد إتمام الوحدتين يكتب المدرّس الفيدباك وينقل الطالب للمستوى التالي. لا توجد درجة نجاح مطلوبة.</p>
-</section>
+</details></section>
+@if(in_array((int) $actor->usergroup_id, [3, 5, 6], true))
+<div class="grid" aria-label="أدوات يومك">
+@foreach(\App\Support\AcademyNavigation::sections((int) $actor->usergroup_id) as $section => $items)
+    @if($section !== 'الأكاديمية')
+    <section class="card"><h2>{{ $section }}</h2>
+        @foreach($items as $label => $path)<a class="tool-link" href="{{ url($path) }}">{{ $label }} ←</a>@endforeach
+    </section>
+    @endif
+@endforeach
+</div>
+@endif
 @if($groups !== null)
-<section class="card">
+<section class="card" id="groups">
     <h2>{{ (int) $actor->usergroup_id === 5 ? 'جروباتي' : 'الجروبات' }}</h2>
     <div class="table-wrap"><table><thead><tr><th>الجروب</th><th>المستوى</th><th>المواعيد</th><th></th></tr></thead><tbody>
     @forelse($groups as $group)
