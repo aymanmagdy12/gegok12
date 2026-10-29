@@ -27,6 +27,11 @@ class AcademyWorkspaceTest extends TestCase
             $t->id(); $t->unsignedBigInteger('school_id'); $t->unsignedBigInteger('parent_id');
             $t->unsignedBigInteger('student_id'); $t->timestamp('deleted_at')->nullable();
         });
+        Schema::create('userprofiles', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('school_id'); $t->unsignedBigInteger('user_id');
+            $t->date('date_of_birth')->nullable(); $t->string('status')->default('active');
+            $t->timestamp('deleted_at')->nullable();
+        });
         (require database_path('migrations/2026_10_29_220000_create_academy_progress_tables.php'))->up();
         foreach ([[1, 3], [2, 5], [3, 6], [4, 7], [5, 5]] as [$id, $role]) {
             DB::table('users')->insert(['id' => $id, 'school_id' => 10, 'usergroup_id' => $role, 'name' => 'Account '.$id]);
@@ -40,6 +45,69 @@ class AcademyWorkspaceTest extends TestCase
     private function account(int $id, int $role, int $school = 10): GenericUser
     {
         return new GenericUser(['id' => $id, 'school_id' => $school, 'usergroup_id' => $role, 'name' => 'Account '.$id]);
+    }
+
+    protected function tearDown(): void
+    {
+        \Carbon\CarbonImmutable::setTestNow();
+        parent::tearDown();
+    }
+
+    public function test_academy_dashboard_renders_for_all_four_roles(): void
+    {
+        foreach ([[1, 3], [2, 5], [3, 6], [4, 7]] as [$id, $role]) {
+            $this->actingAs($this->account($id, $role))->get('/academy')->assertOk()
+                ->assertSee('إنجليزي للأطفال')->assertDontSee('/admin/academics', false)
+                ->assertDontSee('/admin/schooldetails', false);
+        }
+        $this->actingAs($this->account(2, 5))->get('/academy/groups/1')->assertOk()->assertSee('Unit 1');
+    }
+
+    public function test_simplified_navigation_keeps_homework_and_birthdays_without_school_modules(): void
+    {
+        $this->actingAs($this->account(1, 3));
+        $html = view('layouts.admin.menu')->render();
+        $this->assertStringContainsString('/admin/homeworks', $html);
+        $this->assertStringContainsString('/academy/birthdays', $html);
+        foreach (['/admin/schooldetails', '/admin/academics', '/admin/stockproduct', '/accountant/payroll', '/admin/visitorlog'] as $path) {
+            $this->assertStringNotContainsString($path, $html);
+        }
+        $this->actingAs($this->account(4, 7));
+        $this->assertStringNotContainsString('/admin/students', view('layouts.student.menu')->render());
+    }
+
+    public function test_birthday_list_is_private_and_handles_february_29(): void
+    {
+        \Carbon\CarbonImmutable::setTestNow(\Carbon\CarbonImmutable::parse('2027-02-28 08:00:00', 'Africa/Cairo'));
+        foreach ([[3, 10, '2016-02-29', 'active'], [2, 10, '1990-03-05', 'active'],
+            [5, 10, '1991-02-28', 'inactive'], [6, 20, '2015-02-28', 'active']] as [$id, $school, $dob, $status]) {
+            DB::table('userprofiles')->insert(['user_id' => $id, 'school_id' => $school, 'date_of_birth' => $dob, 'status' => $status]);
+        }
+        $list = (new \App\Services\AcademyBirthdays)->upcoming(10);
+        $this->assertCount(2, $list);
+        $this->assertSame('2027-02-28', $list->first()->birthday);
+        $this->actingAs($this->account(1, 3))->get('/academy/birthdays')->assertOk()->assertSee('Account 3')->assertDontSee('Other academy');
+        $this->actingAs($this->account(4, 7))->get('/academy/birthdays')->assertForbidden();
+    }
+
+    public function test_upcoming_birthdays_cross_the_new_year(): void
+    {
+        \Carbon\CarbonImmutable::setTestNow(\Carbon\CarbonImmutable::parse('2026-12-31 10:00:00', 'Africa/Cairo'));
+        DB::table('userprofiles')->insert(['user_id' => 3, 'school_id' => 10, 'date_of_birth' => '2015-01-01', 'status' => 'active']);
+        $birthday = (new \App\Services\AcademyBirthdays)->upcoming(10)->first();
+        $this->assertSame('2027-01-01', $birthday->birthday);
+        $this->assertSame(1, $birthday->days_away);
+    }
+
+    public function test_old_dashboard_links_use_the_simple_workspace_only_when_enabled(): void
+    {
+        $request = \Illuminate\Http\Request::create('/teacher/dashboard');
+        $request->setUserResolver(fn () => $this->account(2, 5));
+        $middleware = new \App\Http\Middleware\AcademyDashboard;
+        $next = fn () => response('original dashboard');
+        $this->assertSame(route('academy.index'), $middleware->handle($request, $next)->getTargetUrl());
+        config(['academy.enabled' => false]);
+        $this->assertSame('original dashboard', $middleware->handle($request, $next)->getContent());
     }
 
     public function test_completion_saves_feedback_and_advances_without_a_grade(): void

@@ -10,6 +10,14 @@ use Illuminate\Validation\ValidationException;
 
 class AcademyController extends Controller
 {
+    public function birthdays(Request $request, \App\Services\AcademyBirthdays $birthdays)
+    {
+        $user = $this->admin($request);
+        return view('academy.birthdays', [
+            'actor' => $user, 'birthdays' => $birthdays->upcoming((int) $user->school_id),
+        ]);
+    }
+
     private function actor(Request $request): object
     {
         $user = $request->user();
