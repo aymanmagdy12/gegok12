@@ -27,10 +27,19 @@ class AcademyBackendTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:',
+        $connection = env('ACADEMY_TEST_DATABASE', 'sqlite');
+        if (!in_array($connection, ['sqlite', 'mysql'], true)) {
+            throw new \RuntimeException('Unsupported test database.');
+        }
+        if ($connection === 'mysql' && (getenv('CI') !== 'true' || config('database.connections.mysql.database') !== 'academy_test')) {
+            throw new \RuntimeException('MySQL tests require the isolated CI academy_test database.');
+        }
+        config(['database.default' => $connection, 'database.connections.sqlite.database' => ':memory:',
             'cache.default' => 'array', 'session.driver' => 'array', 'gexam.enabled' => false,
             'academy_backend.enabled' => true, 'app.key' => 'base64:'.base64_encode(str_repeat('b', 32))]);
-        DB::purge('sqlite'); Cache::flush(); app()->forgetInstance(AcademyContext::class);
+        DB::purge($connection);
+        if ($connection === 'mysql') { Schema::dropAllTables(); }
+        Cache::flush(); app()->forgetInstance(AcademyContext::class);
         Schema::create('schools', function (Blueprint $t) { $t->id(); $t->string('name'); $t->boolean('status')->default(1); $t->softDeletes(); });
         Schema::create('users', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('usergroup_id'); $t->string('name');

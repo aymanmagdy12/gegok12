@@ -9,11 +9,34 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, mysql]
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: academy_test
+          MYSQL_ROOT_PASSWORD: ci_only_password
+          MYSQL_ROOT_HOST: '%'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pci_only_password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
     timeout-minutes: 20
     env:
       APP_ENV: testing
-      DB_CONNECTION: sqlite
-      DB_DATABASE: ':memory:'
+      DB_CONNECTION: ${{ matrix.database }}
+      DB_DATABASE: ${{ matrix.database == 'mysql' && 'academy_test' || ':memory:' }}
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USERNAME: root
+      DB_PASSWORD: ci_only_password
+      ACADEMY_TEST_DATABASE: ${{ matrix.database }}
       SESSION_DRIVER: array
       CACHE_DRIVER: array
       MAIL_MAILER: log
