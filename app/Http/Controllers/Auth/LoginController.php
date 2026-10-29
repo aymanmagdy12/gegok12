@@ -55,15 +55,6 @@ class LoginController extends Controller implements ShouldQueue
      *
      * @return \Illuminate\View\View
      */
-
-    protected function authenticated(\Illuminate\Http\Request $request, $user)
-    {
-        if (config('academy.enabled') && in_array((int) $user->usergroup_id, [3, 5, 6, 7], true)
-            && $user->school_id && \Illuminate\Support\Facades\Schema::hasTable('academy_groups')) {
-            return redirect()->route('academy.index');
-        }
-    }
-
     public function showLoginForm()
     {
         return view('auth.login');

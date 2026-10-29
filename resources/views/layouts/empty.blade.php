@@ -8,7 +8,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <!-- Favicon -->
     @include('layouts.partials.favicon')
-    <title>{{ config('academy.enabled') ? config('academy.name') : config('app.name', 'GegoK12') }}</title>
+    <title>{{ config('app.name', 'GegoK12') }}</title>
     <!-- Scripts -->
     <script src="{{ mix('js/manifest.js') }}"></script>
     <script src="{{ mix('js/vendor.js') }}"></script>
