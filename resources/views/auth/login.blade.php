@@ -2,7 +2,11 @@
 
 @section('content')
 <div class="w-full flex flex-col mx-2  lg:mx-0 md:mx-0">
+@if(config('academy.enabled'))
+<div class="text-center py-6"><h1 class="text-3xl font-semibold">{{ config('academy.name') }}</h1><p>Bridge Academy</p></div>
+@else
 @include('layouts.partials.logo')
+@endif
 <div class="w-full lg:w-1/3 p-8 mx-auto bg-white relative">
   @include('partials.message')
   <div class="justify-content-center">
@@ -124,4 +128,3 @@
 </div>
 </div>
 @endsection
-

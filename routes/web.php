@@ -58,3 +58,6 @@ Route::post( '/{slug}/admission-form/validationPersonalDetail', 'AdmissionContro
 
 
 
+
+// Academy workspace keeps the existing administration routes available.
+require __DIR__.'/academy.php';
