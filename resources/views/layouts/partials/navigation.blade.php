@@ -1,5 +1,8 @@
 <nav class="navbar bg-white w-full flex  lg:flex-row px-4 lg:px-8 py-2 justify-between items-center">
     <div class="nav-brand flex items-center">
+        @if(config('academy.enabled') && auth()->check() && in_array((int) auth()->user()->usergroup_id, [3,5,6,7], true))
+            <a href="{{ route('academy.index') }}" class="px-3 font-semibold">{{ config('academy.name') }}</a>
+        @endif
         @if(\Auth::user())
             <button class="block lg:hidden md:hidden mr-3" onclick="showsidebar('res_sidebar')">
                 <span class="navbar-toggler-icon">

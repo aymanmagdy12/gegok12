@@ -1,0 +1,54 @@
+name: Academy workspace checks
+on:
+  pull_request:
+    paths:
+      - 'app/Http/Controllers/AcademyController.php'
+      - 'app/Services/AcademyProgression.php'
+      - 'routes/academy.php'
+      - 'routes/web.php'
+      - 'config/academy.php'
+      - 'database/migrations/2026_10_29_220000_create_academy_progress_tables.php'
+      - 'resources/views/academy/**'
+      - 'tests/Feature/AcademyWorkspaceTest.php'
+      - '.github/workflows/academy-tests.yml'
+  push:
+    branches: ['feature/accelhub-bridge']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ':memory:'
+      SESSION_DRIVER: array
+      CACHE_DRIVER: array
+      MAIL_MAILER: log
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, pdo_mysql, mbstring, curl, fileinfo, gd, bcmath, xml, zip, intl
+          tools: composer:v2
+          coverage: none
+      - name: PHP syntax
+        run: |
+          php -l app/Http/Controllers/AcademyController.php
+          php -l app/Services/AcademyProgression.php
+          php -l app/Http/Controllers/Auth/LoginController.php
+          php -l routes/academy.php
+          php -l routes/web.php
+          php -l config/academy.php
+          php -l database/migrations/2026_10_29_220000_create_academy_progress_tables.php
+          php -l tests/Feature/AcademyWorkspaceTest.php
+      - name: Install dependencies
+        run: |
+          cp .env.example .env
+          composer install --prefer-dist --no-interaction --no-progress
+          php artisan key:generate
+      - name: Academy authorization and progression tests
+        run: php artisan test --filter=AcademyWorkspaceTest
