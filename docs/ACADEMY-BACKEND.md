@@ -59,6 +59,8 @@ Existing assessment/feedback routes are retained; no new pass/fail system is add
 
 - Removes cache:clear, view:clear and config:clear from admin dashboard requests.
 - Authentication loads the profile without eager-loading family collections.
+  Academy login emails are off by default (ACADEMY_LOGIN_EMAILS=true opts in),
+  avoiding synchronous SMTP delays/failures on every login while retaining audit logs.
   Login validation handles missing users/profiles safely with a generic failure.
 - Caches application settings for five minutes; model saves/deletes invalidate it.
 - Eager-loads student enrollment/group and parent IDs in bulk; avoids library and

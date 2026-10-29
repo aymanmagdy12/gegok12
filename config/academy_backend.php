@@ -5,6 +5,7 @@ return [
     'levels' => 6,
     'units_per_level' => 2,
     'cache_seconds' => 300,
+    'login_email_notifications' => env('ACADEMY_LOGIN_EMAILS', false),
     // These are administrative modules, not learning activities.
     'disabled_paths' => [
         'admin/academics', 'admin/academic/*',

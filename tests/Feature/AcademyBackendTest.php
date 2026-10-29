@@ -36,6 +36,7 @@ class AcademyBackendTest extends TestCase
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('usergroup_id'); $t->string('name');
             $t->string('email')->nullable(); $t->string('status')->default('active'); $t->string('password')->nullable();
             $t->unsignedBigInteger('ref_id')->nullable(); $t->string('registration_number')->nullable(); $t->softDeletes(); $t->timestamps();
+            $t->rememberToken();
         });
         Schema::create('userprofiles', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->unsignedBigInteger('user_id'); $t->integer('usergroup_id');
@@ -260,5 +261,37 @@ class AcademyBackendTest extends TestCase
         $migration->down();
         $this->assertFalse(Schema::hasIndex('users', 'academy_users_lookup'));
         $this->assertDatabaseCount('users', 7);
+    }
+
+    public function test_real_login_accepts_the_four_core_roles_and_keeps_the_existing_redirect(): void
+    {
+        \Illuminate\Support\Facades\Event::fake([\Illuminate\Auth\Events\Login::class]);
+        config(['hashing.bcrypt.rounds' => 4]);
+        foreach ([1, 2, 3, 4] as $id) {
+            DB::table('users')->where('id', $id)->update(['password' => \Illuminate\Support\Facades\Hash::make('correct-password')]);
+            $this->post('/login', ['email' => 'user'.$id.'@example.test', 'password' => 'correct-password'])
+                ->assertRedirect('/admin/dashboard');
+            $this->assertSame($id, (int) Auth::id());
+            Auth::logout();
+        }
+    }
+
+    public function test_login_handles_unknown_and_inactive_accounts_without_a_server_error(): void
+    {
+        $this->post('/login', ['email' => 'missing@example.test', 'password' => 'wrong'])->assertSessionHasErrors('email');
+        DB::table('userprofiles')->where('user_id', 3)->update(['status' => 'inactive']);
+        $this->post('/login', ['email' => 'user3@example.test', 'password' => 'wrong'])->assertSessionHasErrors('email');
+        $this->assertGuest();
+    }
+
+    public function test_academy_login_does_not_queue_a_login_email_by_default(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $listener = \Mockery::mock(\App\Listeners\LogSuccessfulLogin::class)->makePartial()->shouldAllowMockingProtectedMethods();
+        $listener->shouldReceive('getRequestIP')->once()->andReturn('127.0.0.1');
+        $listener->shouldReceive('doActivityLog')->once();
+        $user = new GenericUser(['id' => 3, 'school_id' => 10, 'usergroup_id' => 6, 'email' => 'user3@example.test']);
+        $listener->handle(new \Illuminate\Auth\Events\Login('web', $user, false));
+        \Illuminate\Support\Facades\Mail::assertNothingQueued();
     }
 }
