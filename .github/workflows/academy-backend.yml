@@ -100,6 +100,8 @@ jobs:
           node-version: '22'
       - name: Install existing Mix toolchain
         run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Test notice form submission and network errors
+        run: node tests/browser/notice-form.test.cjs
       - name: Build existing frontend without publishing assets
         run: |
           # Diagnostic output only; no change to application styles or compilation rules.

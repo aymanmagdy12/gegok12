@@ -40,6 +40,9 @@ Authentication/logout/reset password; admin registration of student/parent/teach
 | 18 | High | `resources/assets/js/components/noticeboard/List.vue:description` | Legacy notices render stored HTML through `v-html` without sanitizing it. The existing DOMPurify major version is obsolete; update and sanitize this output. |
 | 19 | Medium | `resources/assets/js/components/noticeboard/List.vue:getData` | Concatenated search strings become query parameters; student mode calls a nonexistent notice/list endpoint. |
 
+| 20 | Medium | `resources/assets/js/components/noticeboard/{Create,Edit}.vue` | Repeated submit sends concurrent writes; network errors throw when `error.response` is missing, and empty 200 responses discard entered data. |
+| 21 | Medium | `resources/assets/js/components/noticeboard/Edit.vue` | Editor still uses the Vue 2 binding instead of the installed Vue 3 Quill editor, so edited content may never reach the request. |
+
 Potential issues require evidence before changes: large legacy JavaScript bundle, optional addon routes, live URL/proxy configuration, SMTP credentials and real parent-account layout. No assumption that a development-server HTTP 200 proves the public tunnel or authenticated dashboard works.
 
 ## Verification boundaries

@@ -45,7 +45,7 @@ class NoticeBoardController extends Controller
     public function noticelist()
     {
         //
-        $standardLink = StandardLink::with('standard','section')->where('school_id',Auth::user()->school_id)->get();
+        $standardLink = StandardLink::with('standard','section')->where('school_id',Auth::user()->school_id)->whereIn('id', app(\App\Services\AcademyAssignments::class)->classIds(Auth::user()))->get();
         $backgroundimages=BackgroundImage::where('school_id',Auth::user()->school_id)->latest()->get();
         $backgroundimages=backgroundImagesResource::collection($backgroundimages);
         $standardLink = StandardLinkResource::collection($standardLink);

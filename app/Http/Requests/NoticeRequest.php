@@ -22,7 +22,7 @@ class NoticeRequest extends FormRequest
             'description' => 'required|string|max:255',
             'publish_date' => 'required|date|before_or_equal:expire_date',
             'expire_date' => 'required|date|after_or_equal:publish_date',
-            'standardLink_id' => ['required_if:type,class', 'nullable', 'integer', Rule::exists('standards_link', 'id')->where('school_id', $school)->where('academic_year_id', $period->id)->where('status', 1)->whereNull('deleted_at')],
+            'standardLink_id' => ['exclude_unless:type,class', 'required', 'integer', Rule::exists('standards_link', 'id')->where('school_id', $school)->where('academic_year_id', $period->id)->where('status', 1)->whereNull('deleted_at')],
             'bg_id' => ['nullable', 'integer', Rule::exists('background_images', 'id')->where('school_id', $school)->whereNull('deleted_at')],
             'attachment_file' => 'nullable|file|mimes:pdf|max:8092',
         ];
