@@ -1,9 +1,8 @@
 @php
     $academyRole = (int) auth()->user()->usergroup_id;
-    $academyPrefix = [3 => 'admin', 5 => 'teacher', 6 => 'student'][$academyRole] ?? null;
     $academyLinks = ['Dashboard' => $academyRole === 3 ? '/learning/academy' : '/learning/academy/dashboard'];
-    if (in_array($academyRole, [3, 5])) { $academyLinks['Groups & teachers'] = '/learning/academy/groups'; }
-    if (in_array($academyRole, [3, 5, 7])) { $academyLinks[$academyRole === 7 ? 'My children' : 'Students & progress'] = $academyRole === 7 ? '/learning/academy/dashboard' : '/learning/academy'; }
+    if (in_array($academyRole, [3, 5])) { $academyLinks[$academyRole === 5 ? 'My groups' : 'Groups & teachers'] = '/learning/academy/groups'; }
+    if (in_array($academyRole, [3, 7])) { $academyLinks[$academyRole === 7 ? 'My children' : 'Students & progress'] = $academyRole === 7 ? '/learning/academy/dashboard' : '/learning/academy'; }
     $academyLinks['Notice board'] = '/learning/academy/notices';
     if ($academyRole === 3) {
         if (!config('academy_backend.test_only')) { $academyLinks['Add student'] = '/learning/academy/accounts/new/student'; }
@@ -12,7 +11,7 @@
     if ($academyRole === 3 && config('academy_backend.test_only')) { unset($academyLinks['Teachers'], $academyLinks['Parents']); $academyLinks['Test accounts'] = '/learning/academy/test-accounts'; }
 
     if ($academyRole === 5) {
-        $academyLinks += ['Eight-session checklists' => '/learning/academy/groups', 'My tasks' => '/teacher/tasks', 'Lesson plans' => '/teacher/lessonplans', 'Calendar' => '/teacher/events', 'My leave requests' => '/learning/academy/teacher/leaves', 'My attendance' => '/learning/academy/teacher/attendance', 'Change password' => '/teacher/changepassword', 'Profile photo' => '/teacher/changeavatar'];
+        $academyLinks += ['My tasks' => '/teacher/tasks', 'Lesson plans' => '/teacher/lessonplans', 'Calendar' => '/teacher/events', 'My leave requests' => '/learning/academy/teacher/leaves', 'My attendance' => '/learning/academy/teacher/attendance', 'Change password' => '/teacher/changepassword', 'Profile photo' => '/teacher/changeavatar'];
     }
     $nav = $academyNav ?? ['students' => collect(), 'selected' => null, 'links' => null];
 

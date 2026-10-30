@@ -1129,7 +1129,7 @@ class AcademyBackendTest extends TestCase
             app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1,3),$id,['firstname'=>'Child '.$id,'email'=>'user'.$id.'@example.test','recordings_url'=>'https://drive.google.com/child-'.$id]);
         }
         // The real parent layout is rendered here, rather than replacing it with a test stub.
-        $this->actingAs($this->actor(4,7))->get('/learning/academy/dashboard')->assertOk()
+        $this->actingAs(\App\Models\User::without(['members','children','parents'])->findOrFail(4))->get('/learning/academy/dashboard')->assertOk()
             ->assertSee('Parent dashboard')->assertSee('https://drive.google.com/child-3',false)->assertSee('https://drive.google.com/child-7',false)
             ->assertDontSee('Select child')->assertDontSee('name="student"',false)->assertDontSee('Student conversation');
         DB::table('notice_board')->insert(['school_id'=>10,'academic_year_id'=>10,'type'=>'school','title'=>'<script>alert(1)</script>','description'=>'<img src=x onerror=alert(1)> العربية','status'=>1]);
@@ -1165,6 +1165,29 @@ class AcademyBackendTest extends TestCase
         $this->assertDatabaseHas('userprofiles',['user_id'=>$id,'firstname'=>'طفل']);
         $this->expectException(ValidationException::class);
         $service->updateProfile($this->actor(1,3),$id,['firstname'=>'طفل','email'=>'four@example.test','date_of_birth'=>now()->subYears(16)->toDateString()]);
+    }
+
+    public function test_notice_validation_accepts_arabic_and_rejects_foreign_groups_invalid_dates_and_oversize_input(): void
+    {
+        $request=\App\Http\Requests\NoticeRequest::create('/admin/notice/add','POST');
+        $request->setUserResolver(fn ()=>$this->actor(1,3));
+        $valid=['type'=>'class','standardLink_id'=>1,'title'=>'إعلان حصة 8','description'=>'Please bring homework. الواجب','publish_date'=>'2026-10-30 10:00:00','expire_date'=>'2026-10-31 10:00:00'];
+        $this->assertTrue($request->authorize());
+        $this->assertFalse(\Illuminate\Support\Facades\Validator::make($valid,$request->rules())->fails());
+        foreach ([['standardLink_id'=>999],['type'=>'invalid'],['publish_date'=>'not a date'],['expire_date'=>'2026-10-29'],['description'=>str_repeat('a',256)],['title'=>str_repeat('ب',256)]] as $override) {
+            $this->assertTrue(\Illuminate\Support\Facades\Validator::make(array_replace($valid,$override),$request->rules())->fails());
+        }
+        $request->setUserResolver(fn ()=>$this->actor(4,7)); $this->assertFalse($request->authorize());
+    }
+
+    public function test_admin_cannot_update_foreign_academy_notice(): void
+    {
+        $id=DB::table('notice_board')->insertGetId(['school_id'=>20,'academic_year_id'=>20,'type'=>'school','title'=>'Foreign','description'=>'Unchanged','status'=>1]);
+        Auth::setUser($this->actor(1,3));
+        $request=\App\Http\Requests\NoticeUpdateRequest::create('/admin/notice/update/'.$id,'POST',['type'=>'school','title'=>'Changed']);
+        $request->setUserResolver(fn ()=>$this->actor(1,3));
+        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+        app(\App\Http\Controllers\Admin\NoticeBoardController::class)->update($request,$id);
     }
 
 }

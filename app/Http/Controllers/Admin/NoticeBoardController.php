@@ -140,10 +140,7 @@ class NoticeBoardController extends Controller
             $notice->description        =   $request->description;
             $notice->status             =   1;
 
-            if($date > $notice->expire_date)
-            {
-                $notice->status=0;
-            }
+            $notice->status = $date > $notice->expire_date ? 0 : 1;
 
             $file = $request->file('attachment_file');
             if($file)
@@ -229,7 +226,7 @@ class NoticeBoardController extends Controller
         }
         catch(Exception $e)
         {
-            //dd($e->getMessage());
+            throw $e; // Laravel reports the exception and returns an error, never a false success.
         }
     }
 
@@ -270,7 +267,7 @@ class NoticeBoardController extends Controller
      */
     public function show($id)
     {
-        $notice = NoticeBoard::where([['id',$id],['school_id',Auth::user()->school_id]])->first();
+        $notice = NoticeBoard::where([['id',$id],['school_id',Auth::user()->school_id]])->firstOrFail();
 
         $backgroundimages=BackgroundImage::where('school_id',Auth::user()->school_id)->latest()->get();
         $backgroundimages=backgroundImagesResource::collection($backgroundimages);
@@ -306,7 +303,7 @@ class NoticeBoardController extends Controller
      */
     public function edit($id)
     {
-        $notice = NoticeBoard::where([['id',$id],['school_id',Auth::user()->school_id]])->first();
+        $notice = NoticeBoard::where([['id',$id],['school_id',Auth::user()->school_id]])->firstOrFail();
         
         if(Gate::allows('notice',$notice))
         {
@@ -331,12 +328,13 @@ class NoticeBoardController extends Controller
         {
             $date=Carbon::now();
             $school_id = Auth::user()->school_id;
-            $notice = NoticeBoard::where('id',$id)->first();
+            $notice = NoticeBoard::where('school_id', Auth::user()->school_id)->where('id', $id)->firstOrFail();
 
             if($request->type == 'class')
             {
                 $notice->standardLink_id    =   $request->standardLink_id;
             }
+            if ($request->type !== 'class') { $notice->standardLink_id = null; }
             $notice->background_id  =   $request->bg_id;
             $notice->type           = $request->type;
             $notice->title          = $request->title;
@@ -356,10 +354,7 @@ class NoticeBoardController extends Controller
                 $notice->attachment_file=$notice->attachment_file; 
             }
 
-            if($date > $notice->expire_date)
-            {
-                $notice->status=0;
-            }
+            $notice->status = $date > $notice->expire_date ? 0 : 1;
             $notice->save();
 
             if($request->type == 'class')
@@ -432,7 +427,7 @@ class NoticeBoardController extends Controller
         }
         catch(Exception $e)
         {
-            //dd($e->getMessage());
+            throw $e; // Laravel reports the exception and returns an error, never a false success.
         }
     }
 
@@ -446,7 +441,7 @@ class NoticeBoardController extends Controller
     {
         try
         {
-            $notice = NoticeBoard::where('id',$id)->first();
+            $notice = NoticeBoard::where('school_id', Auth::user()->school_id)->where('id', $id)->firstOrFail();
             if(Gate::allows('notice',$notice))
             {
                 $notice->delete();
@@ -473,7 +468,7 @@ class NoticeBoardController extends Controller
         }
         catch(Exception $e)
         {
-            //dd($e->getMessage());
+            throw $e; // Laravel reports the exception and returns an error, never a false success.
         }
     }
 }

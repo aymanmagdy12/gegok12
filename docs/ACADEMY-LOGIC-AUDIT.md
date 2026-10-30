@@ -27,6 +27,10 @@ Authentication/logout/reset password; admin registration of student/parent/teach
 | 9 | Medium | `app/Services/AcademyStudents.php:33,78` | New registration rejects ages 4–5 despite the current 4–15 requirement; profile edits apply a different age policy. |
 | 10 | Medium | `resources/views/academy/group-checklist.blade.php:14` | Group checklist contains a separate select-student-in-sidebar action rather than directly opening that student's learning record. |
 
+| 11 | High | `app/Http/Controllers/Admin/NoticeBoardController.php:update` | Notice update looks up only the notice ID, enabling modification across academies. |
+| 12 | High | `app/Http/Requests/NoticeRequest.php`, `NoticeUpdateRequest.php` | Notice audience/group is not tenant-validated; non-English titles are rejected; invalid dates/types and oversize descriptions can reach storage. |
+| 13 | Medium | `app/Http/Controllers/Admin/NoticeBoardController.php:store/update` | Exceptions are swallowed into an empty success-looking response; changing a class notice to a school notice leaves the old class ID and can make it disappear. |
+
 Potential issues require evidence before changes: large legacy JavaScript bundle, optional addon routes, live URL/proxy configuration, SMTP credentials and real parent-account layout. No assumption that a development-server HTTP 200 proves the public tunnel or authenticated dashboard works.
 
 ## Verification boundaries
