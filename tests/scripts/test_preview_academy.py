@@ -37,11 +37,11 @@ class PreviewUpdaterTest(unittest.TestCase):
             git(seed, "remote", "add", "origin", str(remote))
             git(seed, "push", "origin", "main")
             git(root, "clone", "--branch", "main", str(remote), str(work))
-            git(seed, "switch", "-c", "feature/academy-student-journey")
+            git(seed, "switch", "-c", "feature/academy-group-lessons")
             (seed / "journey.php").write_text("new academy code\n")
             git(seed, "add", ".")
             git(seed, "commit", "-m", "academy workflow")
-            git(seed, "push", "origin", "feature/academy-student-journey")
+            git(seed, "push", "origin", "feature/academy-group-lessons")
 
             (work / ".env").write_text("APP_NAME=ExistingAcademy\n")
             (work / "provider.php").write_text("local preview URL fix\n")

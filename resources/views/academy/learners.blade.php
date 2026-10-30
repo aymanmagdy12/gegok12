@@ -27,10 +27,11 @@
         </tr></thead><tbody>
         @forelse($students as $student)
         <tr class="border-b">
-            <td class="p-3"><a class="text-purple-700 underline" href="{{ url('/learning/academy/students/'.$student->id) }}">{{ trim(($student->firstname ?? '').' '.($student->lastname ?? '')) ?: $student->name }}</a><br>{{ $student->email }}</td>
+            <td class="p-3"><a class="text-purple-700 underline" href="{{ url('/learning/academy/students/'.$student->id) }}">{{ trim(($student->firstname ?? '').' '.($student->lastname ?? '')) ?: $student->name }}</a><br>{{ $student->email }}
+@include('academy.lesson-summary', ['summary' => $summaries->get($student->id)])</td>
             <td class="p-3">{{ ucfirst($student->placement_status ?? 'pending') }}</td>
             <td class="p-3">{{ $student->completed_at ? 'Course completed' : ($student->level ? 'Level '.$student->level.' · Unit '.$student->unit : 'Not set') }}</td>
-            <td class="p-3">{{ $student->group_name ?: 'Not assigned' }}</td>
+            <td class="p-3">{{ $student->group_name ?: 'Not assigned' }}@if($student->group_name)<br>@include('academy.schedule', ['group' => $student])@endif</td>
             <td class="p-3">{{ $student->teacher_name ?: ($student->class_teacher_id ? 'Teacher #'.$student->class_teacher_id : 'Not assigned') }}</td>
             <td class="p-3">{{ $student->completed_at ? 'Completed' : (!in_array($student->placement_status, ['completed', 'waived']) ? 'Placement' : ((!$student->standardLink_id || (int) $student->group_level !== (int) $student->level) ? 'Assign group' : 'Open learning record')) }}</td>
         </tr>

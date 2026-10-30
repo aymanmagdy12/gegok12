@@ -78,6 +78,7 @@ class AcademyBackendTest extends TestCase
         Schema::create('student_academics', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('user_id'); $t->integer('standardLink_id')->nullable(); $t->softDeletes(); $t->timestamps(); });
         Schema::create('student_parent_links', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('student_id'); $t->integer('parent_id'); $t->boolean('status')->default(1); $t->timestamps(); $t->softDeletes(); });
         (require database_path('migrations/2026_10_30_000002_create_academy_student_journeys.php'))->up();
+        (require database_path('migrations/2026_10_30_000003_add_academy_group_lessons.php'))->up();
         Schema::create('settings', function (Blueprint $t) { $t->id(); $t->string('key'); $t->string('value'); $t->timestamps(); });
         Schema::create('homeworks', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('standardLink_id');
@@ -508,6 +509,203 @@ class AcademyBackendTest extends TestCase
             foreach (['layouts/admin', 'layouts/teacher', 'layouts/student', 'academy', 'layouts'] as $path) { rmdir($directory.'/'.$path); }
             rmdir($directory);
         }
+    }
+
+
+    private function openGroupLesson(bool $homework = true): int
+    {
+        $this->prepareJourney();
+        return app(\App\Services\AcademyLessons::class)->start($this->actor(2, 5), 1, [
+            'lesson_date' => now('Africa/Cairo')->toDateString(), 'start_time' => '17:00', 'homework_assigned' => $homework, 'topic' => 'Speaking practice',
+        ]);
+    }
+
+    public function test_group_calendar_saves_days_and_clock_times_in_cairo(): void
+    {
+        $request = Request::create('/learning/academy/groups/1', 'POST', ['group_name' => 'Group A', 'level' => 1, 'teacher_id' => 2,
+            'structured_schedule' => 1, 'meeting_days' => ['Monday', 'Thursday'], 'start_time' => '17:30', 'end_time' => '18:30']);
+        $request->setUserResolver(fn () => $this->actor(1, 3));
+        app(\App\Http\Controllers\Academy\LearnerController::class)->saveGroup($request, 1);
+        $setting = DB::table('academy_group_settings')->where('group_id', 1)->first();
+        $this->assertSame(['Monday', 'Thursday'], json_decode($setting->meeting_days, true));
+        $this->assertSame('17:30', substr($setting->start_time, 0, 5));
+        $this->assertSame('Africa/Cairo', $setting->timezone);
+    }
+
+    public function test_admin_adds_existing_students_from_group_without_fabricating_a_placement_test(): void
+    {
+        $this->prepareJourney();
+        app(\App\Services\AcademyLessons::class)->addStudents($this->actor(1, 3), 1, ['students' => [7], 'agree_starting_level' => 1]);
+        $this->assertDatabaseHas('academy_student_journeys', ['student_id' => 7, 'placement_status' => 'waived', 'level' => 1]);
+        $this->assertDatabaseHas('group_members', ['group_id' => 1, 'member_id' => 7, 'deleted_at' => null]);
+        $this->assertDatabaseHas('student_academics', ['standardLink_id' => 1, 'user_id' => 7, 'deleted_at' => null]);
+    }
+
+    public function test_bulk_group_add_is_atomic_when_a_foreign_student_is_submitted(): void
+    {
+        $this->prepareJourney();
+        try { app(\App\Services\AcademyLessons::class)->addStudents($this->actor(1, 3), 1, ['students' => [7, 6], 'agree_starting_level' => 1]); $this->fail('Foreign student must fail.'); }
+        catch (HttpException $e) { $this->assertSame(404, $e->getStatusCode()); }
+        $this->assertDatabaseMissing('group_members', ['member_id' => 7]);
+        $this->assertDatabaseMissing('academy_student_journeys', ['student_id' => 7]);
+    }
+
+    public function test_lesson_creation_is_idempotent_and_pending_does_not_count_as_absent_or_missing(): void
+    {
+        $lesson = $this->openGroupLesson();
+        $again = app(\App\Services\AcademyLessons::class)->start($this->actor(2, 5), 1, ['lesson_date' => now('Africa/Cairo')->toDateString(), 'start_time' => '17:00', 'homework_assigned' => 1]);
+        $this->assertSame($lesson, $again);
+        $this->assertDatabaseCount('academy_group_lessons', 1);
+        $this->assertDatabaseCount('academy_lesson_students', 1);
+        $summary = app(\App\Services\AcademyLessons::class)->summary(10, [3])->get(3);
+        $this->assertSame(0, (int) $summary->absent_count);
+        $this->assertSame(0, (int) $summary->homework_missing);
+        $this->assertSame(1, (int) $summary->homework_pending);
+    }
+
+    public function test_teacher_saves_attendance_and_homework_and_parent_sees_exact_child_totals(): void
+    {
+        $lesson = $this->openGroupLesson(); $service = app(\App\Services\AcademyLessons::class);
+        $data = ['students' => [['student_id' => 3, 'attendance' => 'absent', 'homework' => 'missing']]];
+        $service->save($this->actor(2, 5), 1, $lesson, $data);
+        $service->save($this->actor(2, 5), 1, $lesson, $data);
+        $summary = $service->summary(10, [3])->get(3);
+        $this->assertSame(1, (int) $summary->absent_count); $this->assertSame(1, (int) $summary->homework_missing);
+        $service->save($this->actor(2, 5), 1, $lesson, ['students' => [['student_id' => 3, 'attendance' => 'present', 'homework' => 'done']]]);
+        $summary = $service->summary(10, [3])->get(3);
+        $this->assertSame(0, (int) $summary->absent_count); $this->assertSame(1, (int) $summary->homework_done);
+        $request = Request::create('/learning/academy/students/3'); $request->setUserResolver(fn () => $this->actor(4, 7));
+        $view = app(\App\Http\Controllers\Academy\LearnerController::class)->show($request, 3, app(LearningAccess::class), app(\App\Services\AcademyStudents::class));
+        $this->assertSame(1, (int) $view->getData()['lessonSummary']->homework_done);
+        $this->assertSame('present', $view->getData()['lessonRecords']->first()->attendance);
+        $this->assertDatabaseHas('academy_learning_events', ['student_id' => 3, 'event' => 'lesson_record_updated']);
+    }
+
+    public function test_no_homework_assigned_is_not_counted_as_missing(): void
+    {
+        $lesson = $this->openGroupLesson(false);
+        app(\App\Services\AcademyLessons::class)->save($this->actor(2, 5), 1, $lesson, ['students' => [['student_id' => 3, 'attendance' => 'present', 'homework' => 'not_assigned']]]);
+        $summary = app(\App\Services\AcademyLessons::class)->summary(10, [3])->get(3);
+        $this->assertSame(0, (int) $summary->homework_pending); $this->assertSame(0, (int) $summary->homework_missing);
+    }
+
+    public function test_another_teacher_cannot_open_group_or_mark_its_lesson(): void
+    {
+        $lesson = $this->openGroupLesson();
+        $this->expectException(HttpException::class);
+        app(\App\Services\AcademyLessons::class)->save($this->actor(5, 5), 1, $lesson, ['students' => [['student_id' => 3, 'attendance' => 'absent', 'homework' => 'missing']]]);
+    }
+
+    public function test_teacher_cannot_insert_foreign_students_into_a_saved_lesson_roster(): void
+    {
+        $lesson = $this->openGroupLesson();
+        try { app(\App\Services\AcademyLessons::class)->save($this->actor(2, 5), 1, $lesson, ['students' => [
+            ['student_id' => 3, 'attendance' => 'absent', 'homework' => 'missing'], ['student_id' => 6, 'attendance' => 'present', 'homework' => 'done']]]); $this->fail('Foreign student must fail.'); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('students', $e->errors()); }
+        $this->assertDatabaseHas('academy_lesson_students', ['lesson_id' => $lesson, 'student_id' => 3, 'attendance' => 'pending']);
+    }
+
+    public function test_lesson_snapshot_and_parent_history_survive_a_group_transfer(): void
+    {
+        $lesson = $this->openGroupLesson();
+        app(\App\Services\AcademyLessons::class)->save($this->actor(2, 5), 1, $lesson, ['students' => [['student_id' => 3, 'attendance' => 'absent', 'homework' => 'done']]]);
+        $group = app(AcademyGroups::class)->create(10, ['group_name' => 'Next group', 'level' => 1, 'teacher_id' => 5]);
+        DB::table('academy_group_settings')->insert(['school_id' => 10, 'group_id' => $group->id, 'level' => 1]);
+        app(\App\Services\AcademyStudents::class)->assign($this->actor(1, 3), 3, $group->id);
+        $this->assertCount(0, app(\App\Services\AcademyLessons::class)->roster($this->actor(2, 5), 1)->get());
+        $this->assertDatabaseHas('academy_lesson_students', ['lesson_id' => $lesson, 'student_id' => 3, 'attendance' => 'absent']);
+        $this->assertSame(1, (int) app(\App\Services\AcademyLessons::class)->summary(10, [3])->get(3)->absent_count);
+    }
+
+    public function test_parent_and_student_cannot_open_teacher_group_tools_or_mark_attendance(): void
+    {
+        $this->expectException(HttpException::class);
+        app(\App\Services\AcademyLessons::class)->group($this->actor(4, 7), 1);
+    }
+
+    public function test_teacher_dashboard_opens_only_the_assigned_group_workspace(): void
+    {
+        config(['academy_backend.enabled' => true]);
+        $response = app(\App\Http\Controllers\Teacher\DashboardController::class)->index(Request::create('/teacher/dashboard'));
+        $this->assertStringEndsWith('/learning/academy/groups', $response->getTargetUrl());
+    }
+
+
+    public function test_general_feedback_message_needs_no_placement_or_unit_advance_and_is_visible_to_parent(): void
+    {
+        app(\App\Services\AcademyLessons::class)->message($this->actor(2, 5), 3, ['message' => 'Excellent participation today.']);
+        $this->assertDatabaseHas('academy_student_messages', ['student_id' => 3, 'teacher_id' => 2, 'message' => 'Excellent participation today.']);
+        $this->assertDatabaseCount('academy_teacher_feedback', 0);
+        $request = Request::create('/learning/academy/students/3'); $request->setUserResolver(fn () => $this->actor(4, 7));
+        $view = app(\App\Http\Controllers\Academy\LearnerController::class)->show($request, 3, app(LearningAccess::class), app(\App\Services\AcademyStudents::class));
+        $this->assertSame('Excellent participation today.', $view->getData()['teacherMessages']->first()->message);
+        $this->assertSame('pending', $view->getData()['journey']->placement_status);
+    }
+
+    public function test_unassigned_teacher_cannot_message_another_groups_student(): void
+    {
+        $this->expectException(HttpException::class);
+        app(\App\Services\AcademyLessons::class)->message($this->actor(5, 5), 3, ['message' => 'Not allowed.']);
+    }
+
+    public function test_future_lessons_cannot_be_marked_as_past_attendance(): void
+    {
+        $this->expectException(ValidationException::class);
+        app(\App\Services\AcademyLessons::class)->start($this->actor(2, 5), 1, ['lesson_date' => now('Africa/Cairo')->addDays(2)->toDateString(), 'start_time' => '17:00', 'homework_assigned' => 0]);
+    }
+
+    public function test_group_and_lesson_native_forms_render_for_admin_and_teacher(): void
+    {
+        $lesson = $this->openGroupLesson();
+        $dir = sys_get_temp_dir().'/academy-group-view-'.uniqid();
+        foreach (['layouts/admin', 'layouts/teacher'] as $path) { mkdir($dir.'/'.$path, 0777, true); file_put_contents($dir.'/'.$path.'/layout.blade.php', '@yield("content")'); }
+        view()->getFinder()->prependLocation($dir); view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        try {
+            foreach ([[1, 3], [2, 5]] as [$id, $role]) {
+                $request = Request::create('/learning/academy/groups/1'); $request->setUserResolver(fn () => $this->actor($id, $role));
+                $controller = app(\App\Http\Controllers\Academy\GroupLessonController::class);
+                $html = $controller->show($request, 1, app(\App\Services\AcademyLessons::class))->render();
+                $this->assertStringContainsString('Students in this group', $html);
+                $this->assertSame($role === 3, str_contains($html, 'Add existing students'));
+                $html = $controller->show($request, 1, app(\App\Services\AcademyLessons::class), $lesson)->render();
+                $this->assertStringContainsString('Attendance', $html); $this->assertStringContainsString('Homework', $html);
+                $this->assertSame($role === 5, str_contains($html, 'Save attendance & homework'));
+            }
+        } finally {
+            foreach (['layouts/admin', 'layouts/teacher'] as $path) { unlink($dir.'/'.$path.'/layout.blade.php'); rmdir($dir.'/'.$path); }
+            rmdir($dir.'/layouts'); rmdir($dir);
+        }
+    }
+
+
+    public function test_teacher_dashboard_roster_previews_exclude_other_groups_students(): void
+    {
+        $group = app(AcademyGroups::class)->create(10, ['group_name' => 'Other teacher group', 'level' => 1, 'teacher_id' => 5]);
+        app(AcademyGroups::class)->enroll(10, $group->id, [7]);
+        $preview = app(\App\Services\AcademyLessons::class)->rosterPreview($this->actor(2, 5), [1, $group->id]);
+        $this->assertSame([3], $preview->get(1)->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $this->assertFalse($preview->has($group->id));
+        $request = Request::create('/learning/academy/groups'); $request->setUserResolver(fn () => $this->actor(2, 5));
+        $view = app(\App\Http\Controllers\Academy\LearnerController::class)->groups($request);
+        $this->assertSame(1, $view->getData()['groups']->total());
+        $this->assertSame([1], $view->getData()['groupStudents']->keys()->map(fn ($id) => (int) $id)->all());
+    }
+
+    public function test_structured_schedule_requires_valid_days_and_start_time(): void
+    {
+        $request = Request::create('/learning/academy/groups/1', 'POST', ['group_name' => 'Group A', 'level' => 1, 'teacher_id' => 2,
+            'structured_schedule' => 1, 'meeting_days' => ['Not a weekday']]);
+        $request->setUserResolver(fn () => $this->actor(1, 3));
+        $this->expectException(ValidationException::class);
+        app(\App\Http\Controllers\Academy\LearnerController::class)->saveGroup($request, 1);
+    }
+
+
+    public function test_stale_teacher_assignment_from_a_different_period_does_not_grant_child_access(): void
+    {
+        DB::table('class_teacher_links')->insert(['school_id' => 10, 'academic_year_id' => 20, 'standardLink_id' => 1, 'teacher_id' => 5, 'subject_id' => 1]);
+        $this->assertFalse(app(LearningAccess::class)->students($this->actor(5, 5))->where('users.id', 3)->exists());
+        $this->assertFalse(app(\App\Services\AcademyAssignments::class)->allows($this->actor(5, 5), 1));
     }
 
 }

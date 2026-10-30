@@ -17,16 +17,9 @@ class LearningAccess
             7 => $query->whereIn('users.id', DB::table('student_parent_links')->select('student_id')
                 ->where('school_id', $actor->school_id)->where('parent_id', $actor->id)->whereNull('deleted_at')),
             5 => $query->whereIn('users.id', DB::table('student_academics as a')->select('a.user_id')
-                ->join('standards_link as g', 'g.id', '=', 'a.standardLink_id')
-                ->where('a.school_id', $actor->school_id)->where('g.school_id', $actor->school_id)
+                ->where('a.school_id', $actor->school_id)->whereNull('a.deleted_at')
                 ->where('a.academic_year_id', app(AcademyContext::class)->period((int) $actor->school_id)->id)
-                ->whereColumn('a.academic_year_id', 'g.academic_year_id')->where('g.status', 1)
-                ->whereNull('a.deleted_at')->whereNull('g.deleted_at')
-                ->where(function ($groups) use ($actor) {
-                    $groups->where('g.class_teacher_id', $actor->id)->orWhereIn('g.id',
-                        DB::table('class_teacher_links')->select('standardLink_id')->where('school_id', $actor->school_id)
-                            ->where('teacher_id', $actor->id)->where('status', 1)->whereNull('deleted_at'));
-                })),
+                ->whereIn('a.standardLink_id', app(AcademyAssignments::class)->classIds($actor))),
         };
     }
 
