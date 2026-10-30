@@ -27,7 +27,14 @@ class GroupLessonController extends Controller
             $candidates = app(LearningAccess::class)->students($actor)->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'users.id')->whereNull('p.deleted_at'); })
                 ->leftJoin('academy_student_journeys as j', 'j.student_id', '=', 'users.id')->where('users.status', 'active')->whereNotIn('users.id', $roster->pluck('id'));
             if ($term = trim((string) $request->query('q', ''))) { $candidates->where(fn ($q) => $q->where('p.firstname', 'like', '%'.$term.'%')->orWhere('p.lastname', 'like', '%'.$term.'%')->orWhere('users.email', 'like', '%'.$term.'%')); }
-            $candidates = $candidates->orderBy('p.firstname')->paginate(25, ['users.id', 'users.email', 'p.firstname', 'p.lastname', 'j.level', 'j.placement_status'], 'students_page')->withQueryString();
+            if (in_array($request->query('assignment'), ['assigned', 'unassigned'], true)) {
+                $method = $request->query('assignment') === 'assigned' ? 'whereExists' : 'whereNotExists';
+                $candidates->$method(fn ($q) => $q->selectRaw('1')->from('student_academics as active')->whereColumn('active.user_id', 'users.id')->where('active.school_id', $actor->school_id)->whereNull('active.deleted_at'));
+            }
+            $candidates->selectSub(DB::table('student_academics as current_en')->join('standards_link as current_class', 'current_class.id', '=', 'current_en.standardLink_id')
+                ->join('sections as current_section', 'current_section.id', '=', 'current_class.section_id')->whereColumn('current_en.user_id', 'users.id')
+                ->where('current_en.school_id', $actor->school_id)->whereNull('current_en.deleted_at')->orderByDesc('current_en.id')->limit(1)->select('current_section.name'), 'assigned_group');
+            $candidates = $candidates->orderBy('p.firstname')->addSelect(['users.id', 'users.email', 'p.firstname', 'p.lastname', 'j.level', 'j.placement_status'])->paginate(25, ['*'], 'students_page')->withQueryString();
         }
         return view('academy.group', compact('record', 'roster', 'summaries', 'teacher', 'history', 'session', 'marks', 'candidates') + [
             'role' => (int) $actor->usergroup_id, 'layout' => (int) $actor->usergroup_id === 3 ? 'layouts.admin.layout' : 'layouts.teacher.layout']);
@@ -47,6 +54,7 @@ class GroupLessonController extends Controller
 
     public function start(Request $request, int $group, AcademyLessons $lessons)
     {
+        \App\Support\AcademyClock::normalize($request, 'start_time');
         $lesson = $lessons->start($request->user(), $group, $request->all());
         return redirect('/learning/academy/groups/'.$group.'/lessons/'.$lesson);
     }

@@ -14,5 +14,5 @@
 <label class="inline-block mr-3 my-1"><input type="checkbox" name="meeting_days[]" value="{{ $day }}" @checked(in_array($day, $savedDays))> {{ $day }}</label>
 @endforeach
 </fieldset>
-<label class="block my-2">Start time (Cairo) <input required type="time" name="start_time" class="tw-form-control" value="{{ old('start_time', substr($group->start_time ?? '', 0, 5)) }}"></label>
-<label class="block my-2">End time (optional) <input type="time" name="end_time" class="tw-form-control" value="{{ old('end_time', substr($group->end_time ?? '', 0, 5)) }}"></label>
+<fieldset class="my-3"><legend>Start time (Cairo)</legend>@include('academy.clock-fields', ['prefix' => 'start_time', 'value' => $group->start_time ?? null, 'required' => true])</fieldset>
+<fieldset class="my-3"><legend>End time (optional, Cairo)</legend>@include('academy.clock-fields', ['prefix' => 'end_time', 'value' => $group->end_time ?? null, 'required' => false])</fieldset>

@@ -34,7 +34,7 @@ class AcademyStudents
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'password' => 'required|string|min:12|max:255', 'mobile_no' => 'nullable|string|max:30',
             'date_of_birth' => $role === 6 ? ['nullable', 'date', 'after:'.now()->subYears(16)->toDateString(), 'before_or_equal:'.now()->subYears(6)->toDateString()] : ['nullable', 'date', 'before:today'],
-        ])->validate();
+        ] + ($role === 6 ? $this->linkRules() : []))->validate();
         return DB::transaction(function () use ($actor, $data, $role) {
             $id = DB::table('users')->insertGetId([
                 'school_id' => $actor->school_id, 'usergroup_id' => $role, 'name' => 'academy-'.Str::uuid(),
@@ -46,10 +46,24 @@ class AcademyStudents
                 'firstname' => $data['firstname'], 'lastname' => $data['lastname'] ?? null,
                 'date_of_birth' => $data['date_of_birth'] ?? null, 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
             ]);
-            if ($role === 6) { $this->journey($actor, $id); }
+            if ($role === 6) { $this->journey($actor, $id); $this->saveLinks($actor, $id, $data); }
             $this->log($actor, $role === 6 ? $id : null, 'account_registered', ['account_id' => $id, 'role' => $role]);
             return $id;
         });
+    }
+
+    private function linkRules(): array
+    {
+        return array_fill_keys(['homework_drive_url', 'recordings_url', 'report_card_url'], ['nullable', 'url:https', 'max:2048']);
+    }
+
+    private function saveLinks(object $actor, int $student, array $data): void
+    {
+        $links = array_intersect_key($data, $this->linkRules());
+        if ($links) {
+            $this->journey($actor, $student);
+            DB::table('academy_student_journeys')->where('school_id', $actor->school_id)->where('student_id', $student)->update($links + ['updated_at' => now()]);
+        }
     }
 
     public function updateProfile(object $actor, int $student, array $input): void
@@ -61,7 +75,7 @@ class AcademyStudents
             'firstname' => 'required|string|max:100', 'lastname' => 'nullable|string|max:100',
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($student)],
             'mobile_no' => 'nullable|string|max:30', 'date_of_birth' => 'nullable|date|before:today',
-        ])->validate();
+        ] + $this->linkRules())->validate();
         DB::transaction(function () use ($actor, $student, $data) {
             DB::table('users')->where('id', $student)->where('school_id', $actor->school_id)->update([
                 'email' => $data['email'], 'mobile_no' => $data['mobile_no'] ?? null, 'updated_at' => now(),
@@ -70,6 +84,7 @@ class AcademyStudents
                 'firstname' => $data['firstname'], 'lastname' => $data['lastname'] ?? null,
                 'date_of_birth' => $data['date_of_birth'] ?? null, 'updated_at' => now(),
             ]);
+            $this->saveLinks($actor, $student, $data);
             $this->log($actor, $student, 'student_details_updated', ['fields' => array_keys($data)]);
         });
     }

@@ -22,10 +22,10 @@
 @if($role === 3)
 <section class="bg-white rounded p-4 my-3">
     <h2 class="font-semibold text-lg">Add existing students</h2>
-    <form method="GET" class="my-3"><label>Search students <input name="q" value="{{ request('q') }}" class="tw-form-control" placeholder="Name or email"></label><button class="blue-bg text-white px-3 py-2 rounded">Search</button></form>
+    <form method="GET" class="my-3"><label>Search students <input name="q" value="{{ request('q') }}" class="tw-form-control" placeholder="Name or email"></label><select name="assignment" class="tw-form-control"><option value="">All existing students</option><option value="assigned" @selected(request('assignment') === 'assigned')>Assigned students</option><option value="unassigned" @selected(request('assignment') === 'unassigned')>Unassigned students</option></select><button class="blue-bg text-white px-3 py-2 rounded">Search</button></form>
     <form method="POST" action="{{ url('/learning/academy/groups/'.$record->id.'/students') }}">@csrf
         @foreach($candidates as $student)
-        <label class="block my-2"><input type="checkbox" name="students[]" value="{{ $student->id }}"> {{ trim(($student->firstname ?? '').' '.($student->lastname ?? '')) }} · {{ $student->email }} · {{ $student->level ? 'Level '.$student->level : 'Placement not set' }}</label>
+        <label class="block my-2"><input type="checkbox" name="students[]" value="{{ $student->id }}"> {{ trim(($student->firstname ?? '').' '.($student->lastname ?? '')) }} · {{ $student->email }} · {{ $student->level ? 'Level '.$student->level : 'Placement not set' }} · {{ $student->assigned_group ? 'Currently assigned: '.$student->assigned_group : 'Not assigned to a group' }}</label>
         @endforeach
         <label class="block my-3"><input type="checkbox" name="agree_starting_level" value="1"> For students awaiting placement, I agree to start them at this group’s level, Unit 1. No placement test is claimed.</label>
         <p class="my-2">Students with an agreed level must match this group. Adding a student moves their main enrollment from their previous group and keeps its history.</p>
@@ -38,7 +38,7 @@
     <h2 class="font-semibold text-lg">Record a lesson</h2>
     <form method="POST" action="{{ url('/learning/academy/groups/'.$record->id.'/lessons') }}">@csrf
         <label class="block my-2">Lesson date <input type="date" required name="lesson_date" class="tw-form-control" max="{{ now('Africa/Cairo')->toDateString() }}" value="{{ old('lesson_date', now('Africa/Cairo')->toDateString()) }}"></label>
-        <label class="block my-2">Start time (Cairo) <input type="time" required name="start_time" class="tw-form-control" value="{{ old('start_time', substr($record->start_time ?? '17:00', 0, 5)) }}"></label>
+        <fieldset class="my-3"><legend>Start time (Cairo)</legend>@include('academy.clock-fields', ['prefix' => 'start_time', 'value' => $record->start_time, 'required' => true])</fieldset>
         <label class="block my-2">Topic <input name="topic" maxlength="255" class="tw-form-control" value="{{ old('topic') }}"></label>
         <label class="block my-2">Homework for this lesson <select name="homework_assigned" class="tw-form-control"><option value="0">No homework assigned</option><option value="1">Homework assigned — track completion</option></select></label>
         <button class="blue-bg text-white px-3 py-2 rounded">Open attendance & homework sheet</button>
@@ -47,7 +47,7 @@
 @endif
 @else
 <section class="bg-white rounded p-4 my-3">
-    <h2 class="font-semibold text-lg">{{ $session->lesson_date }} · {{ substr($session->start_time, 0, 5) }} Cairo · {{ $session->topic }}</h2>
+    <h2 class="font-semibold text-lg">{{ $session->lesson_date }} · {{ \App\Support\AcademyClock::time($session->start_time) }} Cairo · {{ $session->topic }}</h2>
     <p class="my-2">This lesson keeps its original student roster. Unrecorded statuses are not counted as absences or missed homework.</p>
     <form method="POST" action="{{ url('/learning/academy/groups/'.$record->id.'/lessons/'.$session->id) }}">@csrf
         <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-left"><th class="p-2">Student</th><th class="p-2">Attendance</th><th class="p-2">Homework</th></tr></thead><tbody>
@@ -65,7 +65,7 @@
 @endif
 <section class="bg-white rounded p-4 my-3">
     <h2 class="font-semibold text-lg">Lesson history</h2>
-    @forelse($history as $item)<p class="my-2"><a class="underline" href="{{ url('/learning/academy/groups/'.$record->id.'/lessons/'.$item->id) }}">{{ $item->lesson_date }} · {{ substr($item->start_time, 0, 5) }} Cairo · {{ $item->topic }}</a></p>@empty<p class="my-2">No lessons recorded yet.</p>@endforelse
+    @forelse($history as $item)<p class="my-2"><a class="underline" href="{{ url('/learning/academy/groups/'.$record->id.'/lessons/'.$item->id) }}">{{ $item->lesson_date }} · {{ \App\Support\AcademyClock::time($item->start_time) }} Cairo · {{ $item->topic }}</a></p>@empty<p class="my-2">No lessons recorded yet.</p>@endforelse
     {{ $history->links() }}
 </section>
 @endsection

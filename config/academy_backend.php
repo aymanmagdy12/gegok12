@@ -1,6 +1,8 @@
 <?php
 
 return [
+    'test_only' => env('ACADEMY_TEST_ONLY', false),
+    'demo_emails' => [3 => 'admin.demo@accelhub.test', 5 => 'teacher.demo@accelhub.test', 6 => 'student.demo@accelhub.test', 7 => 'parent.demo@accelhub.test'],
     'enabled' => env('ACADEMY_MODE', true),
     'levels' => 6,
     'units_per_level' => 2,

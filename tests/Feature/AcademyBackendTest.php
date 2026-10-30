@@ -87,8 +87,15 @@ class AcademyBackendTest extends TestCase
         Schema::create('homework_approvals', function (Blueprint $t) { $t->id(); $t->integer('homework_id'); $t->string('status'); $t->softDeletes(); });
         Schema::create('attendances', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('user_id');
-            $t->date('date'); $t->string('session'); $t->integer('status'); $t->softDeletes();
+            $t->integer('standardLink_id')->nullable(); $t->integer('recorded_by')->nullable(); $t->text('remarks')->nullable(); $t->timestamps(); $t->date('date'); $t->string('session'); $t->integer('status'); $t->softDeletes();
         });
+        Schema::create('teacher_leave_applications', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('user_id');
+            $t->integer('standardLink_id')->nullable(); $t->dateTime('from_date'); $t->dateTime('to_date');
+            $t->text('remarks')->nullable(); $t->string('session')->nullable(); $t->string('status');
+            $t->integer('approved_by')->nullable(); $t->date('approved_on')->nullable(); $t->text('comments')->nullable(); $t->timestamps(); $t->softDeletes();
+        });
+        (require database_path('migrations/2026_10_30_000004_improve_academy_teacher_workspace.php'))->up();
         foreach ([10, 20, 30] as $id) { DB::table('schools')->insert(['id' => $id, 'name' => 'Academy '.$id]); }
         foreach ([[1,3,10], [2,5,10], [3,6,10], [4,7,10], [5,5,10], [6,6,20], [7,6,10]] as [$id,$role,$school]) {
             DB::table('users')->insert(['id' => $id, 'school_id' => $school, 'usergroup_id' => $role, 'name' => 'Account '.$id, 'email' => 'user'.$id.'@example.test']);
@@ -706,6 +713,135 @@ class AcademyBackendTest extends TestCase
         DB::table('class_teacher_links')->insert(['school_id' => 10, 'academic_year_id' => 20, 'standardLink_id' => 1, 'teacher_id' => 5, 'subject_id' => 1]);
         $this->assertFalse(app(LearningAccess::class)->students($this->actor(5, 5))->where('users.id', 3)->exists());
         $this->assertFalse(app(\App\Services\AcademyAssignments::class)->allows($this->actor(5, 5), 1));
+    }
+
+
+    public function test_admin_group_list_requires_both_level_and_teacher_and_filters_matches(): void
+    {
+        $this->prepareJourney();
+        $controller = app(\App\Http\Controllers\Academy\LearnerController::class);
+        foreach ([[], ['level' => 1], ['teacher_id' => 2]] as $filters) {
+            $request = Request::create('/learning/academy/groups', 'GET', $filters); $request->setUserResolver(fn () => $this->actor(1, 3));
+            $view = $controller->groups($request);
+            $this->assertFalse($view->getData()['filtersReady']); $this->assertSame(0, $view->getData()['groups']->total());
+        }
+        $request = Request::create('/learning/academy/groups', 'GET', ['level' => 1, 'teacher_id' => 2]); $request->setUserResolver(fn () => $this->actor(1, 3));
+        $view = $controller->groups($request); $this->assertTrue($view->getData()['filtersReady']); $this->assertSame(1, $view->getData()['groups']->total());
+    }
+
+    public function test_assigned_student_search_includes_students_already_in_another_group(): void
+    {
+        $group = app(AcademyGroups::class)->create(10, ['group_name' => 'Target group', 'level' => 1, 'teacher_id' => 2]);
+        DB::table('academy_group_settings')->insert(['school_id' => 10, 'group_id' => $group->id, 'level' => 1]);
+        $request = Request::create('/learning/academy/groups/'.$group->id, 'GET', ['assignment' => 'assigned']); $request->setUserResolver(fn () => $this->actor(1, 3));
+        $view = app(\App\Http\Controllers\Academy\GroupLessonController::class)->show($request, $group->id, app(\App\Services\AcademyLessons::class));
+        $this->assertSame([3], $view->getData()['candidates']->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $this->assertSame('Original group', $view->getData()['candidates']->first()->assigned_group);
+        $request = Request::create('/learning/academy', 'GET', ['assignment' => 'assigned']); $request->setUserResolver(fn () => $this->actor(1, 3));
+        $view = app(\App\Http\Controllers\Academy\LearnerController::class)->index($request, app(LearningAccess::class));
+        $this->assertSame(1, $view->getData()['students']->total());
+    }
+
+    public function test_student_registration_saves_personal_learning_links_and_parent_can_read_them(): void
+    {
+        $id = app(\App\Services\AcademyStudents::class)->register($this->actor(1, 3), ['firstname' => 'Linked', 'email' => 'linked@example.test', 'password' => 'private-test-password',
+            'homework_drive_url' => 'https://drive.google.com/drive/folders/homework', 'recordings_url' => 'https://drive.google.com/drive/folders/recordings', 'report_card_url' => 'https://docs.google.com/spreadsheets/d/report/edit']);
+        app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1, 3), $id, 4);
+        $request = Request::create('/learning/academy/students/'.$id); $request->setUserResolver(fn () => $this->actor(4, 7));
+        $view = app(\App\Http\Controllers\Academy\LearnerController::class)->show($request, $id, app(LearningAccess::class), app(\App\Services\AcademyStudents::class));
+        $this->assertSame('https://drive.google.com/drive/folders/homework', $view->getData()['journey']->homework_drive_url);
+        $this->assertSame('https://docs.google.com/spreadsheets/d/report/edit', $view->getData()['journey']->report_card_url);
+    }
+
+    public function test_student_link_edit_preserves_progress_and_rejects_unsafe_url_schemes(): void
+    {
+        $this->prepareJourney(2, 1); $service = app(\App\Services\AcademyStudents::class);
+        $service->updateProfile($this->actor(1, 3), 3, ['firstname' => 'Child', 'email' => 'user3@example.test', 'homework_drive_url' => 'https://drive.google.com/drive/folders/personal']);
+        $this->assertDatabaseHas('academy_student_journeys', ['student_id' => 3, 'level' => 2, 'homework_drive_url' => 'https://drive.google.com/drive/folders/personal']);
+        $this->expectException(ValidationException::class);
+        $service->updateProfile($this->actor(1, 3), 3, ['firstname' => 'Child', 'email' => 'user3@example.test', 'recordings_url' => 'javascript:alert(1)']);
+    }
+
+    public function test_clock_uses_twelve_hour_display_and_converts_noon_and_midnight(): void
+    {
+        $this->assertSame('5:30 PM', \App\Support\AcademyClock::time('17:30:00'));
+        foreach ([[12, 'AM', '00:15'], [12, 'PM', '12:15'], [5, 'PM', '17:15']] as [$hour, $period, $expected]) {
+            $request = Request::create('/', 'POST', ['start_time_hour' => $hour, 'start_time_minute' => 15, 'start_time_period' => $period]);
+            \App\Support\AcademyClock::normalize($request, 'start_time'); $this->assertSame($expected, $request->input('start_time'));
+        }
+    }
+
+    public function test_teacher_leave_is_reviewed_by_admin_and_visible_to_its_owner_only(): void
+    {
+        $service = app(\App\Services\AcademyTeacherWorkspace::class);
+        $id = $service->requestLeave($this->actor(2, 5), ['from_date' => '2026-11-03', 'to_date' => '2026-11-04', 'remarks' => 'Family appointment']);
+        $this->assertSame(1, $service->leaves($this->actor(2, 5))->count()); $this->assertSame(0, $service->leaves($this->actor(5, 5))->count());
+        $service->review($this->actor(1, 3), $id, ['decision' => 'approved', 'comments' => 'Approved.']);
+        $this->assertDatabaseHas('teacher_leave_applications', ['id' => $id, 'status' => 'approved', 'academy_decision' => 'approved', 'approved_by' => 1]);
+        $this->assertSame('Approved.', $service->leaves($this->actor(2, 5))->first()->comments);
+    }
+
+    public function test_leave_rejection_requires_reason_and_cannot_be_reviewed_twice(): void
+    {
+        $service = app(\App\Services\AcademyTeacherWorkspace::class);
+        $id = $service->requestLeave($this->actor(2, 5), ['from_date' => '2026-11-05', 'to_date' => '2026-11-05', 'remarks' => 'Personal leave']);
+        try { $service->review($this->actor(1, 3), $id, ['decision' => 'rejected']); $this->fail('Rejection needs a comment.'); } catch (ValidationException $e) { $this->assertArrayHasKey('comments', $e->errors()); }
+        $service->review($this->actor(1, 3), $id, ['decision' => 'rejected', 'comments' => 'Please choose another date.']);
+        $this->assertDatabaseHas('teacher_leave_applications', ['id' => $id, 'status' => 'cancelled', 'academy_decision' => 'rejected']);
+        $this->expectException(ValidationException::class); $service->review($this->actor(1, 3), $id, ['decision' => 'approved']);
+    }
+
+    public function test_teacher_cannot_approve_leave_or_withdraw_another_teachers_request(): void
+    {
+        $service = app(\App\Services\AcademyTeacherWorkspace::class);
+        $id = $service->requestLeave($this->actor(2, 5), ['from_date' => '2026-11-06', 'to_date' => '2026-11-06', 'remarks' => 'Personal leave']);
+        try { $service->review($this->actor(2, 5), $id, ['decision' => 'approved']); $this->fail('Teachers cannot approve leave.'); } catch (HttpException $e) { $this->assertSame(403, $e->getStatusCode()); }
+        try { $service->withdraw($this->actor(5, 5), $id); $this->fail('Only the owner can withdraw.'); } catch (HttpException $e) { $this->assertSame(404, $e->getStatusCode()); }
+        $service->withdraw($this->actor(2, 5), $id); $this->assertDatabaseHas('teacher_leave_applications', ['id' => $id, 'status' => 'cancelled']);
+    }
+
+    public function test_overlapping_leave_and_foreign_academy_review_are_rejected(): void
+    {
+        $service = app(\App\Services\AcademyTeacherWorkspace::class);
+        $id = $service->requestLeave($this->actor(2, 5), ['from_date' => '2026-11-07', 'to_date' => '2026-11-09', 'remarks' => 'Personal leave']);
+        try { $service->requestLeave($this->actor(2, 5), ['from_date' => '2026-11-08', 'to_date' => '2026-11-10', 'remarks' => 'Overlap']); $this->fail('Overlapping requests must fail.'); } catch (ValidationException $e) { $this->assertArrayHasKey('from_date', $e->errors()); }
+        $this->expectException(HttpException::class); $service->review($this->actor(1, 3, 20), $id, ['decision' => 'approved']);
+    }
+
+    public function test_teacher_attendance_is_self_only_and_full_day_writes_are_idempotent(): void
+    {
+        $service = app(\App\Services\AcademyTeacherWorkspace::class);
+        $input = ['teacher_id' => 2, 'date' => now('Africa/Cairo')->toDateString(), 'session' => 'day', 'status' => 0, 'remarks' => 'Absent'];
+        $service->markAttendance($this->actor(1, 3), $input); $service->markAttendance($this->actor(1, 3), $input);
+        $this->assertSame(2, $service->attendance($this->actor(2, 5), 5)->count());
+        $this->assertSame(0, $service->attendance($this->actor(5, 5), 2)->count());
+        $this->assertDatabaseCount('attendances', 2);
+        $this->expectException(HttpException::class); $service->markAttendance($this->actor(2, 5), $input);
+    }
+
+    public function test_demo_command_creates_only_four_new_linked_accounts_and_preserves_existing_data(): void
+    {
+        $before = DB::table('users')->count();
+        $this->artisan('academy:demo-accounts', ['--school' => 10])->assertExitCode(0);
+        $this->assertSame($before + 4, DB::table('users')->count());
+        $this->assertSame(4, DB::table('users')->whereIn('email', config('academy_backend.demo_emails'))->count());
+        $student = DB::table('users')->where('email', config('academy_backend.demo_emails.6'))->first();
+        $parent = DB::table('users')->where('email', config('academy_backend.demo_emails.7'))->first();
+        $this->assertDatabaseHas('student_parent_links', ['student_id' => $student->id, 'parent_id' => $parent->id]);
+        $this->assertDatabaseHas('academy_group_settings', ['school_id' => 10, 'is_demo' => 1]);
+        $this->artisan('academy:demo-accounts', ['--school' => 10])->assertExitCode(0);
+        $this->assertSame($before + 4, DB::table('users')->count());
+    }
+
+    public function test_test_only_mode_filters_existing_students_and_rejects_other_logins(): void
+    {
+        $this->artisan('academy:demo-accounts', ['--school' => 10])->assertExitCode(0);
+        config(['academy_backend.test_only' => true]);
+        $this->assertSame(1, app(LearningAccess::class)->students($this->actor(1, 3))->count());
+        $this->assertSame(config('academy_backend.demo_emails.6'), app(LearningAccess::class)->students($this->actor(1, 3))->first()->email);
+        DB::table('users')->where('id', 2)->update(['password' => \Illuminate\Support\Facades\Hash::make('old-password-123')]);
+        $this->post('/login', ['email' => 'user2@example.test', 'password' => 'old-password-123'])->assertSessionHasErrors('email');
+        $this->assertDatabaseHas('users', ['id' => 2, 'deleted_at' => null]);
     }
 
 }

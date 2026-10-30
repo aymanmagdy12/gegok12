@@ -71,6 +71,7 @@ trait AuthenticatesUsers
             ->where($field, $request->input($field))->first();
         $active = $user && $user->status === 'active' && $user->userprofile
             && $user->userprofile->status === 'active';
+        if ($active && config('academy_backend.test_only')) { $active = in_array($user->email, config('academy_backend.demo_emails'), true); }
         if ($active && config('academy_backend.enabled')) {
             $active = in_array((int) $user->usergroup_id, [1, 3, 5, 6, 7], true);
         }
