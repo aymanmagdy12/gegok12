@@ -17,7 +17,7 @@
     <article class="border-b py-3">
         <a class="underline font-semibold" href="{{ url('/learning/academy/students/'.$student->id) }}">{{ trim(($student->firstname ?? '').' '.($student->lastname ?? '')) ?: $student->name }}</a>
         @include('academy.lesson-summary', ['summary' => $summaries->get($student->id)])
-        @if($role === 5)<a class="underline" href="{{ url('/learning/academy/students/'.$student->id).'#teacher-feedback' }}">Send student & parent feedback</a>@endif
+        @if($role === 5)<a class="underline" href="{{ url('/learning/academy/students/'.$student->id) }}">Send student & parent feedback</a>@endif
     </article>
     @empty<p class="my-2">No students added yet.</p>@endforelse
 </section>

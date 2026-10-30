@@ -80,6 +80,7 @@ class AcademyBackendTest extends TestCase
         (require database_path('migrations/2026_10_30_000002_create_academy_student_journeys.php'))->up();
         (require database_path('migrations/2026_10_30_000003_add_academy_group_lessons.php'))->up();
         Schema::create('settings', function (Blueprint $t) { $t->id(); $t->string('key'); $t->string('value'); $t->timestamps(); });
+        Schema::create('school_details', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('school_id'); $t->string('meta_key'); $t->string('meta_value')->nullable(); $t->timestamps(); $t->softDeletes(); });
         Schema::create('notice_board', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('standardLink_id')->nullable();
             $t->string('type'); $t->string('title'); $t->text('description'); $t->dateTime('publish_date')->nullable();
@@ -976,9 +977,9 @@ class AcademyBackendTest extends TestCase
         app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1, 3), 7, ['firstname' => 'Second', 'email' => 'user7@example.test', 'recordings_url' => 'https://drive.google.com/second']);
         $request = Request::create('/learning/academy/dashboard', 'GET', ['student' => 7]);
         $context = app(\App\Services\AcademyNavigation::class)->context($this->actor(4, 7), $request);
-        $this->assertCount(2, $context['students']); $this->assertSame(7, (int) $context['selected']->id); $this->assertSame('https://drive.google.com/second', $context['links']->recordings_url);
+        $this->assertCount(2, $context['students']); $this->assertNull($context['selected']); $this->assertNull($context['links']);
         $request = Request::create('/learning/academy/dashboard', 'GET', ['student' => 6]);
-        $this->expectException(HttpException::class); app(\App\Services\AcademyNavigation::class)->context($this->actor(4, 7), $request);
+        $context = app(\App\Services\AcademyNavigation::class)->context($this->actor(4, 7), $request); $this->assertCount(2, $context['students']); $this->assertNull($context['selected']);
     }
 
     public function test_inactive_parent_link_does_not_grant_child_access(): void
@@ -1093,17 +1094,17 @@ class AcademyBackendTest extends TestCase
     }
 
 
-    public function test_selected_child_persists_across_pages_and_revoked_links_fall_back_safely(): void
+    public function test_parent_navigation_ignores_legacy_selection_and_revoked_children_disappear(): void
     {
         app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1, 3), 7, 4);
         $navigation = app(\App\Services\AcademyNavigation::class); $session = app('session.store');
         $request = Request::create('/learning/academy/dashboard', 'GET', ['student' => 7]); $request->setLaravelSession($session);
-        $this->assertSame(7, (int) $navigation->context($this->actor(4, 7), $request)['selected']->id);
+        $this->assertNull($navigation->context($this->actor(4, 7), $request)['selected']);
         $request = Request::create('/learning/academy/messages'); $request->setLaravelSession($session);
-        $this->assertSame(7, (int) $navigation->context($this->actor(4, 7), $request)['selected']->id);
+        $this->assertNull($navigation->context($this->actor(4, 7), $request)['selected']);
         app(\App\Services\AcademyStudents::class)->unlinkParent($this->actor(1, 3), 7, 4);
         $request = Request::create('/learning/academy/dashboard'); $request->setLaravelSession($session);
-        $this->assertSame(3, (int) $navigation->context($this->actor(4, 7), $request)['selected']->id);
+        $context=$navigation->context($this->actor(4, 7), $request); $this->assertNull($context['selected']); $this->assertSame([3], $context['students']->pluck('id')->map(fn ($id)=>(int) $id)->all());
     }
 
     public function test_notices_never_escape_tenant_audience_or_publication_window_even_with_search(): void
@@ -1188,6 +1189,14 @@ class AcademyBackendTest extends TestCase
         $request->setUserResolver(fn ()=>$this->actor(1,3));
         $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
         app(\App\Http\Controllers\Admin\NoticeBoardController::class)->update($request,$id);
+    }
+
+    public function test_real_teacher_and_student_layouts_render_without_optional_school_logo(): void
+    {
+        foreach ([2=>'Teacher dashboard',3=>'Student dashboard'] as $id=>$heading) {
+            $user=\App\Models\User::without(['members','children','parents'])->findOrFail($id);
+            $this->actingAs($user)->get('/learning/academy/dashboard')->assertOk()->assertSee($heading)->assertSee('Notice board')->assertDontSee('Selected student');
+        }
     }
 
 }

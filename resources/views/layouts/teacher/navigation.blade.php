@@ -7,7 +7,9 @@
         </span>
       </button>
 
-      @if(Auth::user()->SchoolLogo['meta_value'] != '-')
+      @php($navigationLogo = Auth::user()->SchoolLogo)
+      @php($navigationProfile = Auth::user()->userprofile)
+      @if($navigationLogo && $navigationLogo['meta_value'] != '-')
         <a class="h-10 object-contain" href="{{ route('dashboard') }}">
           <img src="{{ Auth::user()->SchoolLogoPath }}" class="h-10 w-auto object-cover">
         </a>
@@ -44,23 +46,23 @@
           <!-- start -->
           <li>
             <div class="profile-click" dusk="profile-menu">
-              @if(Auth::user()->userprofile->avatar!= null)
-                <img src="{{ Auth::user()->userprofile->AvatarPath }}" class="w-8 h-8 rounded-full cursor-pointer">
+              @if($navigationProfile?->avatar!= null)
+                <img src="{{ $navigationProfile?->AvatarPath }}" class="w-8 h-8 rounded-full cursor-pointer">
               @else
                 <img src="{{asset('uploads/user/avatar/default-user.jpg')}}" class="w-8 h-8 rounded-full cursor-pointer">
               @endif
               <div class="user-dtl rounded">
                 <ul class="list-reset">
                   <div class="flex border-b p-2 items-center">
-                    @if(Auth::user()->userprofile->avatar!= null)
-                      <img src="{{ Auth::user()->userprofile->AvatarPath }}" class="w-10 h-10 rounded-full cursor-pointer">
+                    @if($navigationProfile?->avatar!= null)
+                      <img src="{{ $navigationProfile?->AvatarPath }}" class="w-10 h-10 rounded-full cursor-pointer">
                     @else
                       <img src="{{asset('uploads/user/avatar/default-user.jpg')}}" class="w-10 h-10 rounded-full cursor-pointer">
                     @endif
                     <div>
                       <div>
                         <a id="navbarDropdown" class="nav-link dropdown-toggle text-sm  no-underline text-black px-2" href="{{url('/teacher/dashboard')}}">
-                          {{ Auth::user()->FullName }} <span class="caret"></span>
+                          {{ trim(($navigationProfile?->firstname ?? '').' '.($navigationProfile?->lastname ?? '')) ?: Auth::user()->name }} <span class="caret"></span>
                         </a>
                       </div>
                       <div>

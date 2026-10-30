@@ -9,30 +9,23 @@ class AcademyNavigation
 {
     private \WeakMap $cache;
     public function __construct() { $this->cache = new \WeakMap; }
+
     public function context(object $actor, Request $request): array
     {
-        if (!in_array((int) $actor->usergroup_id, [5, 6, 7], true)) { return ['students' => collect(), 'selected' => null, 'links' => null]; }
-        $id = $request->route('student') ?? $request->query('student');
-        abort_if($id !== null && (!is_numeric($id) || (int) $id < 1), 404);
-        $key = $actor->school_id.':'.$actor->id.':'.($id ?? 'auto').':'.($request->route('group') ?? 'all');
+        $role = (int) $actor->usergroup_id;
+        $empty = ['students' => collect(), 'selected' => null, 'links' => null];
+        // Teachers navigate groups; parents see all linked children in dashboard cards.
+        // Neither role has an implicit, remembered or query-selected child in the sidebar.
+        if (!in_array($role, [6, 7], true)) { return $empty; }
+        $key = $actor->school_id.':'.$actor->id;
         $entries = $this->cache[$request] ?? [];
         if (isset($entries[$key])) { return $entries[$key]; }
-        $explicit = $id !== null;
-        $sessionKey = 'academy.selected_student.'.$actor->school_id.'.'.$actor->id;
-        if (!$explicit && $request->hasSession()) { $id = $request->session()->get($sessionKey); }
-        $students = app(LearningAccess::class)->students($actor)->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'users.id')->whereNull('p.deleted_at'); })
-            ->orderBy('p.firstname')->get(['users.id', 'users.name', 'p.firstname', 'p.lastname']);
-        if ((int) $actor->usergroup_id === 5 && $request->route('group')) {
-            $ids = app(AcademyLessons::class)->roster($actor, (int) $request->route('group'))->get()->pluck('id');
-            $students = $students->whereIn('id', $ids)->values();
-            if ($explicit) { abort_unless($students->contains('id', (int) $id), 404); }
-        }
-        if ($explicit) { app(LearningAccess::class)->student($actor, (int) $id); }
-        $selected = ($id ? $students->firstWhere('id', (int) $id) : null) ?: $students->first();
-        if ($request->hasSession()) {
-            if ($selected) { $request->session()->put($sessionKey, $selected->id); } else { $request->session()->forget($sessionKey); }
-        }
-        $links = $selected ? DB::table('academy_student_journeys')->where('school_id', $actor->school_id)->where('student_id', $selected->id)->first(['homework_drive_url', 'recordings_url', 'report_card_url']) : null;
+        $students = app(LearningAccess::class)->students($actor)->leftJoin('userprofiles as p', function ($j) {
+            $j->on('p.user_id', '=', 'users.id')->whereNull('p.deleted_at');
+        })->orderBy('p.firstname')->get(['users.id', 'users.name', 'p.firstname', 'p.lastname']);
+        $selected = $role === 6 ? $students->first() : null;
+        $links = $selected ? DB::table('academy_student_journeys')->where('school_id', $actor->school_id)
+            ->where('student_id', $selected->id)->first(['homework_drive_url', 'recordings_url', 'report_card_url']) : null;
         $entries[$key] = compact('students', 'selected', 'links');
         $this->cache[$request] = $entries;
         return $entries[$key];

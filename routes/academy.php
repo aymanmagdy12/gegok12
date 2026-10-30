@@ -41,7 +41,7 @@ Route::middleware('auth')->prefix('learning/academy')->group(function () {
     Route::post('/students/{student}/parent', [LearnerController::class, 'parent'])->whereNumber('student');
     Route::post('/students/{student}/group', [LearnerController::class, 'assign'])->whereNumber('student');
     Route::post('/students/{student}/feedback', [LearnerController::class, 'feedback'])->whereNumber('student');
-    Route::post('/students/{student}/message', [GroupLessonController::class, 'message'])->whereNumber('student');
+    Route::post('/students/{student}/message', fn () => abort(410, 'Direct messages are no longer available. Use unit feedback or the notice board.'))->whereNumber('student');
     Route::post('/students/{student}/feedback/{feedback}/read', [LearnerController::class, 'readFeedback'])->whereNumber(['student', 'feedback']);
 });
 

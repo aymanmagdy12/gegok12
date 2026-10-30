@@ -72,16 +72,9 @@
     <p>Complete placement first. Existing groups need a course level set in <a class="underline" href="{{ url('/learning/academy/groups') }}">Groups & teachers</a>.</p>
 </div>
 @endif
-@if($role === 5)
-<form id="teacher-feedback" class="bg-white rounded p-4 my-3" method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/message') }}">
-    @csrf<h2 class="font-semibold text-lg">Send feedback message</h2>
-    <label class="block my-2">Message for student & parent<textarea name="message" required minlength="3" maxlength="5000" class="tw-form-control block w-full">{{ old('message') }}</textarea></label>
-    <button class="custom-green text-white px-3 py-2 rounded">Send feedback message</button>
-</form>
-@endif
 <section id="student-feedback" class="bg-white rounded p-4 my-3">
-    <h2 class="font-semibold text-lg">Teacher messages</h2>
-    @forelse($teacherMessages as $message)<article class="border-b py-3"><p class="font-semibold">{{ $message->teacher_name ?: 'Teacher' }} · {{ $message->created_at }}</p><p style="white-space: pre-wrap">{{ $message->message }}</p></article>@empty<p class="my-2">No teacher messages yet.</p>@endforelse
+    <h2 class="font-semibold text-lg">Previous teacher feedback</h2>
+    @forelse($teacherMessages as $message)<article class="border-b py-3"><p class="font-semibold">{{ $message->teacher_name ?: 'Teacher' }} · {{ $message->created_at }}</p><p style="white-space: pre-wrap">{{ $message->message }}</p></article>@empty<p class="my-2">No previous teacher feedback.</p>@endforelse
     {{ $teacherMessages->links() }}
 </section>
 @if($role === 5 && $journey->level && !$journey->completed_at)
