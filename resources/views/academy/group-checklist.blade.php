@@ -10,7 +10,7 @@
     @foreach($checklist['participants'] as $participant)
     @php($editable = $role === 5 && $checklist['selected']->active && $roster->contains('id', $participant->student_id))
     <details class="border rounded p-3 my-3" @if((int) request('student') === (int) $participant->student_id) open @endif><summary class="cursor-pointer font-semibold">{{ trim(($participant->firstname ?? '').' '.($participant->lastname ?? '')) ?: $participant->name }}</summary>
-        @if($roster->contains('id', $participant->student_id))<p class="my-2"><a class="underline" href="{{ url('/learning/academy/groups/'.$record->id).'?cycle='.$participant->cycle_id.'&student='.$participant->student_id.'#eight-sessions' }}">Select this student's learning links in the left menu</a></p>@endif
+        @if($roster->contains('id', $participant->student_id))<p class="my-2"><a class="underline" href="{{ url('/learning/academy/students/'.$participant->student_id) }}">Learning record, links & feedback</a></p>@endif
         <form method="POST" action="{{ url('/learning/academy/groups/'.$record->id.'/checklists/'.$participant->cycle_id.'/students/'.$participant->student_id) }}">@csrf
             <input type="hidden" name="revision" value="{{ $participant->revision }}">
             <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-left"><th class="p-2">Session</th><th class="p-2">Attendance</th><th class="p-2">Homework</th></tr></thead><tbody>
@@ -22,7 +22,7 @@
             </tr>
             @endforeach
             </tbody></table></div>
-            @if($editable)<button class="custom-green text-white px-3 py-2 rounded my-3">Save this student's eight sessions</button><a class="underline mx-2" href="{{ url('/learning/academy/messages/'.$participant->student_id) }}">Message student & parent</a>@else<p class="my-2">Historical or read-only record.</p>@endif
+            @if($editable)<button class="custom-green text-white px-3 py-2 rounded my-3">Save this student's eight sessions</button>@else<p class="my-2">Historical or read-only record.</p>@endif
         </form>
     </details>
     @endforeach

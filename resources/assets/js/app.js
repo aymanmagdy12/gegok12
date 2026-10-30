@@ -32,7 +32,19 @@ import registerCustomAddon from './custom_addon'
  * or customize the JavaScript scaffolding to fit your unique needs.
  */
 const appContainer = document.getElementById('app');
-const rootTemplate = appContainer ? appContainer.innerHTML : '<div></div>';
+let rootTemplate = appContainer ? appContainer.innerHTML : '<div></div>';
+let mountTarget = appContainer;
+if (appContainer?.hasAttribute('data-academy-native')) {
+    // Native forms must keep their DOM and entered values while the bundle loads.
+    // Only the header notification is a Vue component on these server-rendered pages.
+    const notification = appContainer.querySelector('notification');
+    mountTarget = notification ? document.createElement('span') : null;
+    rootTemplate = notification ? notification.outerHTML : '<div></div>';
+    if (notification) {
+        mountTarget.style.display = 'contents';
+        notification.replaceWith(mountTarget);
+    }
+}
 const app = createApp({ template: rootTemplate });
 
 const originalComponent = app.component.bind(app);
@@ -415,4 +427,4 @@ app.component('PickList', PickList);
 
 app.use(PrimeVue)
 
-app.mount('#app');
+if (mountTarget) app.mount(mountTarget);

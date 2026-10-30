@@ -42,13 +42,13 @@
 
     </head>
     <body class="font-primary antialiased min-h-screen overflow-x-hidden">
-        <div id="app">
+        <div id="app" @if(request()->is('learning/academy*')) data-academy-native @endif>
             @yield('base-navigation')
             <main class="flex w-full h-full min-h-screen">
                 <div class="sidebar min-h-full">
                     @yield('base-sidebar')
                 </div>
-                <div class="bg-gray-200 grow w-full px-4" style="width: calc(100vw - 195px);">
+                <div @if(request()->is('learning/academy*')) v-pre @endif class="bg-gray-200 grow w-full px-4" style="width: calc(100vw - 195px);">
                     @yield('base-content')
                 </div>
             </main>
@@ -181,3 +181,4 @@
 }
     </style>
 </html>
+

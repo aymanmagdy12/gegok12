@@ -80,7 +80,11 @@ class AcademyChecklists
             ->where('c.school_id', $actor->school_id)->where('class.school_id', $actor->school_id)->where('p.school_id', $actor->school_id)->where('p.student_id', $student);
         if ($cycle) { $q->where('c.id', $cycle); }
         else {
-            $q->where('c.active', 1)->whereNull('g.deleted_at')->whereExists(fn ($s) => $s->selectRaw('1')->from('group_members as gm')->whereColumn('gm.group_id', 'g.id')->where('gm.member_id', $student)->where('gm.member_type', 'student')->whereNull('gm.deleted_at'));
+            $q->where('c.active', 1)->where('g.status', 1)->where('class.status', 1)->whereNull('class.deleted_at')
+                ->where('class.academic_year_id', app(AcademyContext::class)->period((int) $actor->school_id)->id)
+                ->whereExists(fn ($enrollment) => $enrollment->selectRaw('1')->from('student_academics as a')->where('a.user_id', $student)
+                    ->where('a.school_id', $actor->school_id)->whereColumn('a.standardLink_id', 'class.id')->whereColumn('a.academic_year_id', 'class.academic_year_id')->whereNull('a.deleted_at'))
+                ->whereNull('g.deleted_at')->whereExists(fn ($s) => $s->selectRaw('1')->from('group_members as gm')->whereColumn('gm.group_id', 'g.id')->where('gm.member_id', $student)->where('gm.member_type', 'student')->whereNull('gm.deleted_at'));
         }
         $participant = $q->orderByDesc('c.id')->first(['p.id', 'p.cycle_id', 'c.number', 'g.group_name']);
         if ($cycle) { abort_unless($participant, 404); }

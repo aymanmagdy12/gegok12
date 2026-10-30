@@ -28,12 +28,12 @@ class AcademyStudents
     {
         $this->admin($actor);
         abort_unless(in_array($role, [5, 6, 7], true), 422);
-        if (isset($input['email'])) { $input['email'] = mb_strtolower(trim($input['email'])); }
+        if (isset($input['email']) && is_string($input['email'])) { $input['email'] = mb_strtolower(trim($input['email'])); }
         $data = Validator::make($input, [
             'firstname' => 'required|string|max:100', 'lastname' => 'nullable|string|max:100',
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')],
             'password' => 'required|string|min:12|max:255', 'mobile_no' => 'nullable|string|max:30',
-            'date_of_birth' => $role === 6 ? ['nullable', 'date', 'after:'.now()->subYears(16)->toDateString(), 'before_or_equal:'.now()->subYears(6)->toDateString()] : ['nullable', 'date', 'before:today'],
+            'date_of_birth' => $role === 6 ? ['nullable', 'date', 'after:'.now()->subYears(16)->toDateString(), 'before_or_equal:'.now()->subYears(4)->toDateString()] : ['nullable', 'date', 'before:today'],
         ] + ($role === 6 ? $this->linkRules() : []))->validate();
         return DB::transaction(function () use ($actor, $data, $role) {
             $id = DB::table('users')->insertGetId([
@@ -70,11 +70,11 @@ class AcademyStudents
     {
         $this->admin($actor);
         app(LearningAccess::class)->student($actor, $student);
-        if (isset($input['email'])) { $input['email'] = mb_strtolower(trim($input['email'])); }
+        if (isset($input['email']) && is_string($input['email'])) { $input['email'] = mb_strtolower(trim($input['email'])); }
         $data = Validator::make($input, [
             'firstname' => 'required|string|max:100', 'lastname' => 'nullable|string|max:100',
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($student)],
-            'mobile_no' => 'nullable|string|max:30', 'date_of_birth' => 'nullable|date|before:today',
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($student)],
+            'mobile_no' => 'nullable|string|max:30', 'date_of_birth' => ['nullable', 'date', 'after:'.now()->subYears(16)->toDateString(), 'before_or_equal:'.now()->subYears(4)->toDateString()],
         ] + $this->linkRules())->validate();
         DB::transaction(function () use ($actor, $student, $data) {
             DB::table('users')->where('id', $student)->where('school_id', $actor->school_id)->update([

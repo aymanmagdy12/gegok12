@@ -2,6 +2,7 @@
   <div class="bg-white shadow px-4 py-3">
     <div>
 	    <div v-if="this.success!=null" class="alert alert-success" id="success-alert">{{this.success}}</div>
+<p v-if="errors.form" class="text-red-500 text-xs font-semibold" role="alert">{{errors.form[0]}}</p>
 <div class="flex flex-wrap">
 <div class="w-full lg:w-3/4">
       <div class="my-5">
@@ -194,7 +195,7 @@
   <!-- end -->
     	</div>
       <div class="my-6">
-        <a href="#" id="submit-btn" class="btn btn-submit blue-bg text-white rounded px-3 py-1 mr-3 text-sm font-medium" @click="checkForm()">Submit</a>
+        <a href="#" id="submit-btn" class="btn btn-submit blue-bg text-white rounded px-3 py-1 mr-3 text-sm font-medium" :aria-disabled="submitting" @click.prevent="checkForm()">Submit</a>
     		<a href="#" class="btn btn-reset bg-gray-100 text-gray-700 border rounded px-3 py-1 mr-3 text-sm font-medium" @click="reset()">Reset</a>	
       </div>
 	  </div>
@@ -291,6 +292,7 @@ export default {
       attachment_file:'',
       errors:[],
       success:null,
+      submitting:false,
       editshow:0,
       imgpopup:0,
       imageData:'',
@@ -376,7 +378,7 @@ export default {
         this.success = response.data.success;
         window.location.reload();
       }).catch(error => {
-        this.errors = error.response.data.errors;
+        this.errors = error.response?.data?.errors || {form:['Unable to upload the background. Please try again.']};
       });
     },
 
@@ -426,6 +428,8 @@ export default {
 
     checkForm()
     {
+      if(this.submitting) return;
+      this.submitting=true;
       this.errors=[];
       this.success=null; 
 
@@ -439,12 +443,13 @@ export default {
       formData.append('description',this.description);          
       formData.append('attachment_file',this.attachment_file);          
                      
-      axios.post('/admin/notice/add',formData,{headers: {'Content-Type': 'multipart/form-data'}}).then(response => {     
+      return axios.post('/admin/notice/add',formData,{headers: {'Content-Type': 'multipart/form-data'}}).then(response => {     
+        if(!response.data?.success) throw new Error('Invalid notice response');
         this.success = response.data.success;
         window.location.reload();
       }).catch(error => {
-        this.errors = error.response.data.errors;
-      });
+        this.errors = error.response?.data?.errors || {form:['Unable to save the notice. Your entries are still here; please try again.']};
+      }).finally(() => { this.submitting=false; });
     },
 
     

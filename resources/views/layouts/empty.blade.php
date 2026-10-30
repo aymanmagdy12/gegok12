@@ -10,15 +10,15 @@
     @include('layouts.partials.favicon')
     <title>{{ config('app.name', 'GegoK12') }}</title>
     <!-- Scripts -->
-    <script src="{{ mix('js/manifest.js') }}"></script>
-    <script src="{{ mix('js/vendor.js') }}"></script>
-    <script src="{{ mix('js/app.js') }}"></script>
+    <script defer src="{{ mix('js/manifest.js') }}"></script>
+    <script defer src="{{ mix('js/vendor.js') }}"></script>
+    <script defer src="{{ mix('js/app.js') }}"></script>
     <!-- Styles -->
     <link href="{{ asset('css/app.css') }}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500&family=IBM+Plex+Sans:wght@500;600;700&family=Nunito+Sans:ital,wght@0,200;0,300;0,400;0,600;0,700;0,800;0,900;1,200;1,300;1,400;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="app">
+    <div id="app" @if(request()->is('login')) data-academy-native @endif>
       <main>
         <div class="empty-layout flex items-center bg-gray-300 min-h-screen">
           @yield('content')
@@ -30,3 +30,4 @@
 
 
 </html>
+

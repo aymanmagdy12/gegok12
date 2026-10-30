@@ -468,7 +468,7 @@ Route::get( '/downloadformat', 'ImportMemberController@downloadFormat' );
 	Route::get( '/notice/edit/{id}', 'NoticeBoardController@edit' );
 	Route::post( '/notice/update/{id}', 'NoticeBoardController@update' );
 	//delete
-	Route::get( '/notice/delete/{id}', 'NoticeBoardController@destroy' );
+	Route::post( '/notice/delete/{id}', 'NoticeBoardController@destroy' );
 	//backgroundImage
 	Route::post( '/notice/background/add', 'NoticeBoardController@addimage' );
 

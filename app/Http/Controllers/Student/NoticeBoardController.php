@@ -19,29 +19,11 @@ class NoticeBoardController extends Controller
 
     public function list(Request $request)
     {
-        //
-        $school_id = Auth::user()->school_id;
-        $academic_year = SiteHelper::getAcademicYear($school_id);
-
-        $notices = NoticeBoard::where([['school_id',$school_id],['academic_year_id',$academic_year->id],['type','!=','teacher']])->where([['expire_date','>=',date('Y-m-d')],['status',1]])->where('standardLink_id',null)->orWhere('standardLink_id',Auth::user()->studentAcademicLatest->standardLink_id);
-
-        if(count((array)\Request::getQueryString())>0)
-        {
-            if($request->showExpired == 'true')
-            { 
-                $notices = $notices->orWhere([['status',0],['expire_date','<=',date('Y-m-d')]]);
-            }
-            if($request->search != '')
-            { 
-                $notice = $notices->where('title','LIKE','%'.$request->search.'%')->orWhere('description','LIKE','%'.$request->search.'%');
-            }
-        }
-
-        $notices = $notices->paginate(10);
-
-        $notices = NoticeResource::collection($notices);
-        
-        return $notices;
+        $data = $request->validate(['search' => 'nullable|string|max:200', 'standardLink_id' => 'nullable|integer|min:1']);
+        $ids = app(\App\Services\AcademyNotices::class)->query($request->user(), trim($data['search'] ?? ''), $request->boolean('showExpired'))->reorder()->select('id');
+        $notices = NoticeBoard::whereIn('id', $ids);
+        if (!empty($data['standardLink_id'])) { $notices->where('standardLink_id', $data['standardLink_id']); }
+        return NoticeResource::collection($notices->orderByDesc('publish_date')->orderByDesc('id')->paginate(10));
     }
 
     /**

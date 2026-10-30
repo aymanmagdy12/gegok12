@@ -2,6 +2,7 @@
   <div class="">
     <div>
 	    <div v-if="this.success!=null" class="alert alert-success" id="success-alert">{{this.success}}</div>
+<p v-if="errors.form" class="text-red-500 text-xs font-semibold" role="alert">{{errors.form[0]}}</p>
 <div class="flex flex-wrap">
 <div class="w-full lg:w-3/4">
       <div class="my-5">
@@ -109,7 +110,7 @@
             </div>
             <div class="mb-2 w-full lg:w-1/2 md:w-1/2">
              <!--  <textarea type="text" name="description" id="description" v-model="description" class="tw-form-control w-full" rows="3" @keyup='remaincharCount(255)' maxlength="255"></textarea> -->
-             <quill-editor ref="myQuillEditor" v-model="description" :options="editorOption"/>
+             <QuillEditor ref="myQuillEditor" v-model:content="description" contentType="html" theme="snow" :options="editorOption"/>
               <span v-if="errors.description" class="text-red-500 text-xs font-semibold">{{errors.description[0]}}</span>
             </div>
           </div>
@@ -191,7 +192,7 @@
   <!-- end -->
 </div>
       <div class="my-6">
-        <a href="#" id="submit-btn" class="btn btn-submit blue-bg text-white rounded px-3 py-1 mr-3 text-sm font-medium" @click="updateCircular()">Update</a>
+        <a href="#" id="submit-btn" class="btn btn-submit blue-bg text-white rounded px-3 py-1 mr-3 text-sm font-medium" :aria-disabled="submitting" @click.prevent="updateCircular()">Update</a>
     		<a href="#" class="btn btn-reset bg-gray-100 text-gray-700 border rounded px-3 py-1 mr-3 text-sm font-medium" @click="reset()">Reset</a>
       </div>
 	  </div>
@@ -265,13 +266,15 @@
 
 <script>
 
+import { QuillEditor } from '@vueup/vue-quill'
+import '@vueup/vue-quill/dist/vue-quill.snow.css'
 import { VueDatePicker } from '@vuepic/vue-datepicker'
 import '@vuepic/vue-datepicker/dist/main.css'
 export default {
 
   props:['id','url'],
 
-  components: { VueDatePicker },
+  components: { VueDatePicker, QuillEditor },
 
   data(){
     return{
@@ -289,6 +292,7 @@ export default {
       attachment:'',
       errors:[],
       success:null,
+      submitting:false,
       imageData:'',
       bg_image:'',
       bg_id:'',
@@ -375,7 +379,7 @@ export default {
         this.success = response.data.success;
         window.location.reload();
       }).catch(error => {
-        this.errors = error.response.data.errors;
+        this.errors = error.response?.data?.errors || {form:['Unable to upload the background. Please try again.']};
       });
     },
 
@@ -442,6 +446,8 @@ export default {
 
     updateCircular()
     {
+      if(this.submitting) return;
+      this.submitting=true;
       this.errors=[];
       this.success=null; 
 
@@ -455,11 +461,12 @@ export default {
       formData.append('description',this.description); 
       formData.append('attachment_file',this.attachment_file);
              
-      axios.post('/admin/notice/update/'+this.id,formData).then(response => {  
+      return axios.post('/admin/notice/update/'+this.id,formData).then(response => {  
+        if(!response.data?.success) throw new Error('Invalid notice response');
         this.success = response.data.success;
       }).catch(error => {
-          this.errors = error.response.data.errors;
-      });
+          this.errors = error.response?.data?.errors || {form:['Unable to save the notice. Your entries are still here; please try again.']};
+      }).finally(() => { this.submitting=false; });
     },
 
     OnFileSelected(event)
@@ -559,3 +566,4 @@ export default {
   color:red;
 }
 </style>
+

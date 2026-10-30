@@ -7,6 +7,7 @@ return [
     'levels' => 6,
     'units_per_level' => 2,
     'cache_seconds' => 300,
+    'notice_notifications' => env('ACADEMY_NOTICE_NOTIFICATIONS', false),
     'login_email_notifications' => env('ACADEMY_LOGIN_EMAILS', false),
     // These are administrative modules, not learning activities.
     'disabled_paths' => [
