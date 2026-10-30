@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth')->prefix('learning/academy')->group(function () {
     Route::get('/dashboard', [\App\Http\Controllers\Academy\AcademyDashboardController::class, 'index']);
     Route::get('/notices', [\App\Http\Controllers\Academy\NoticeController::class, 'index']);
+    Route::get('/notices/{notice}/attachment', [\App\Http\Controllers\Academy\NoticeController::class, 'attachment'])->whereNumber('notice');
     // Retired chat URLs stay predictable; existing records are retained.
     Route::get('/messages/{student?}', fn () => redirect('/learning/academy/notices'))->whereNumber('student');
     Route::post('/messages/{student}', fn () => abort(410, 'Direct messages are no longer available. Use the notice board.'))->whereNumber('student');

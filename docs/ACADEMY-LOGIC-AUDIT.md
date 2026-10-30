@@ -34,6 +34,8 @@ Authentication/logout/reset password; admin registration of student/parent/teach
 | 14 | Medium | `resources/views/layouts/{teacher,student}/navigation.blade.php` | Missing optional school-logo/profile records cause null-property errors instead of rendering the dashboard fallback. |
 | 15 | Medium | `app/Services/AcademyNavigation.php` | Legacy `?student=` links/session selection can break the dashboard and add unrelated student lookups to every teacher menu render. |
 
+| 16 | High | `routes/admin.php:notice/delete`, `resources/assets/js/components/noticeboard/List.vue` | Notice deletion is a GET mutation and bypasses CSRF protection. |
+
 Potential issues require evidence before changes: large legacy JavaScript bundle, optional addon routes, live URL/proxy configuration, SMTP credentials and real parent-account layout. No assumption that a development-server HTTP 200 proves the public tunnel or authenticated dashboard works.
 
 ## Verification boundaries

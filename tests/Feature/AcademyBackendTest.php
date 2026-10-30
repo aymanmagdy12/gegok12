@@ -83,7 +83,7 @@ class AcademyBackendTest extends TestCase
         Schema::create('school_details', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('school_id'); $t->string('meta_key'); $t->string('meta_value')->nullable(); $t->timestamps(); $t->softDeletes(); });
         Schema::create('notice_board', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('standardLink_id')->nullable();
-            $t->string('type'); $t->string('title'); $t->text('description'); $t->dateTime('publish_date')->nullable();
+            $t->string('type'); $t->string('title'); $t->text('description'); $t->string('attachment_file')->nullable(); $t->dateTime('publish_date')->nullable();
             $t->dateTime('expire_date')->nullable(); $t->boolean('status')->default(1); $t->softDeletes(); $t->timestamps();
         });
         Schema::create('homeworks', function (Blueprint $t) {
@@ -1197,6 +1197,20 @@ class AcademyBackendTest extends TestCase
             $user=\App\Models\User::without(['members','children','parents'])->findOrFail($id);
             $this->actingAs($user)->get('/learning/academy/dashboard')->assertOk()->assertSee($heading)->assertSee('Notice board')->assertDontSee('Selected student');
         }
+    }
+
+    public function test_notice_attachments_are_scoped_and_missing_files_return_not_found(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake();
+        \Illuminate\Support\Facades\Storage::put('notices/demo.pdf','test PDF contents');
+        $base=['school_id'=>10,'academic_year_id'=>10,'type'=>'school','title'=>'Attachment','description'=>'Test','status'=>1,'attachment_file'=>'notices/demo.pdf'];
+        $own=DB::table('notice_board')->insertGetId($base);
+        $foreign=DB::table('notice_board')->insertGetId(array_replace($base,['school_id'=>20]));
+        $this->actingAs($this->actor(4,7))->get('/learning/academy/notices/'.$own.'/attachment')->assertOk()->assertDownload('demo.pdf');
+        $this->get('/learning/academy/notices/'.$foreign.'/attachment')->assertNotFound();
+        \Illuminate\Support\Facades\Storage::delete('notices/demo.pdf');
+        $this->get('/learning/academy/notices/'.$own.'/attachment')->assertNotFound();
+        $this->get('/admin/notice/delete/'.$own)->assertStatus(405);
     }
 
 }

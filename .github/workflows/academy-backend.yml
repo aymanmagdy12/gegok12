@@ -2,7 +2,7 @@ name: Academy backend checks
 on:
   pull_request:
   push:
-    branches: ['fix/academy-backend', 'feature/academy-student-journey', 'feature/academy-group-lessons', 'feature/academy-teacher-workspace', 'feature/academy-dashboards-checklists', 'fix/academy-group-flow']
+    branches: ['fix/academy-backend', 'feature/academy-student-journey', 'feature/academy-group-lessons', 'feature/academy-teacher-workspace', 'feature/academy-dashboards-checklists']
   workflow_dispatch:
 permissions:
   contents: read
@@ -82,4 +82,11 @@ jobs:
       - name: Install existing Mix toolchain
         run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Build existing frontend without publishing assets
-        run: npm run production
+        run: |
+          # Diagnostic output only; no change to application styles or compilation rules.
+          echo "require('laravel-mix').webpackConfig({stats: {children: true}});" >> webpack.mix.js
+          npm run production
+      - name: Summarize dependency advisories for review
+        run: |
+          npm audit --json > /tmp/academy-npm-audit.json || true
+          node -e "const r=require('/tmp/academy-npm-audit.json'); console.log(JSON.stringify(r.metadata?.vulnerabilities || r.error || {unavailable:true}));"
