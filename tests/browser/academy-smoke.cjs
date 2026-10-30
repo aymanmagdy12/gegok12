@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
   fs.mkdirSync('tests/browser/artifacts', {recursive:true});
   try {
     for (const width of [390, 768, 1440]) {
-      for (const [id, role] of [[2,'Teacher'],[4,'Parent'],[3,'Student']]) {
+      for (const [id, role] of [[2,'Teacher'],[4,'Parent'],[3,'Student'],[1,'Admin']]) {
         const context = await browser.newContext({viewport:{width,height:900}});
         const page = await context.newPage();
         const row = {width,role,consoleErrors:[],pageErrors:[],failedRequests:[],blockedExternalRequests:[]};
@@ -42,12 +42,17 @@ const assert = require('node:assert/strict');
           row.submittedHomework = submitted.get('marks[1][homework]');
           assert.equal(row.submittedAttendance,'1'); assert.equal(row.submittedHomework,'1');
           await page.getByText('Eight-session attendance and homework saved.',{exact:false}).waitFor();
-        } else {
+        } else if(role !== 'Admin') {
           await page.getByText('Attendance: 1/8',{exact:false}).first().waitFor();
           await page.getByText('Homework completed: 1/8',{exact:false}).first().waitFor();
           if(role==='Parent') {
             assert.ok(await page.getByRole('link',{name:'Recorded sessions',exact:false}).count()>=2);
           }
+        }
+        if(role==='Admin') {
+          await page.getByRole('link',{name:'Students & progress',exact:true}).last().click();
+          await page.waitForURL('**/learning/academy');
+          assert.equal(await page.getByRole('heading',{name:'Admin dashboard',exact:true}).count(),0);
         }
         await page.screenshot({path:`tests/browser/artifacts/${role.toLowerCase()}-${width}.png`,fullPage:true});
         await page.goto('http://127.0.0.1:8000/learning/academy/notices');
@@ -56,8 +61,17 @@ const assert = require('node:assert/strict');
         await page.getByRole('button',{name:'Search',exact:true}).click();
         await page.getByRole('heading',{name:'إعلان الأكاديمية',exact:true}).waitFor();
         await page.getByText('Literal {{ 7 * 7 }} remains text',{exact:true}).waitFor();
+        // Exercise the actual sidebar hit area, including padding, rather than a direct URL.
+        if(width<768) await page.locator('button[onclick*="showsidebar"]').first().click();
+        const menu=page.locator(width<768 ? '#res_sidebar' : '.sidebar .header-wrapper-b');
+        await menu.getByRole('link',{name:'Dashboard',exact:true}).first().click({position:{x:8,y:8}});
+        await page.waitForURL('**/learning/academy/dashboard');
+        await page.getByRole('heading',{name:`${role} dashboard`,exact:true}).waitFor();
+        row.dashboardClick='pass';
         const wrong=await context.request.get('http://127.0.0.1:8000/learning/academy/not-a-real-page');
         assert.equal(wrong.status(),404);
+        assert.equal(row.pageErrors.length,0);
+        assert.equal(row.failedRequests.length,0);
         row.result='pass';
         await context.close();
       }

@@ -42,7 +42,7 @@ class LoginController extends Controller implements ShouldQueue
     protected function authenticated(\Illuminate\Http\Request $request, $user)
     {
         if (config('academy_backend.enabled') && in_array((int) $user->usergroup_id, [3, 5, 6, 7], true)) {
-            return redirect('/learning/academy');
+            return redirect('/learning/academy/dashboard');
         }
     }
 

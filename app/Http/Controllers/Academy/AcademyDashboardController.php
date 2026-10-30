@@ -16,7 +16,7 @@ class AcademyDashboardController extends Controller
     public function index(Request $request)
     {
         $actor = $request->user(); $role = (int) $actor->usergroup_id;
-        if ($role === 3) { return redirect('/learning/academy'); }
+        if ($role === 3) { return $this->admin($actor); }
         abort_unless(in_array($role, [5, 6, 7], true), 403);
         $context = app(AcademyNavigation::class)->context($actor, $request);
         $students = $context['students']; $groups = collect(); $groupStudents = collect(); $pendingLeave = 0;
@@ -51,4 +51,24 @@ class AcademyDashboardController extends Controller
         return view('academy.dashboard', compact('role', 'students', 'groups', 'groupStudents', 'pendingLeave', 'cards', 'context') + [
             'layout' => match ($role) { 5 => 'layouts.teacher.layout', 6 => 'layouts.student.layout', 7 => 'academy.parent-layout' }]);
     }
+    private function admin(object $actor)
+    {
+        $accounts = DB::table('users')->where('school_id', $actor->school_id)->whereNull('deleted_at')
+            ->when(config('academy_backend.test_only'), fn ($q) => $q->whereIn('email', array_values(config('academy_backend.demo_emails'))));
+        $counts = (clone $accounts)->selectRaw('usergroup_id, COUNT(*) as total')->groupBy('usergroup_id')->pluck('total', 'usergroup_id');
+        $period = app(\App\Services\AcademyContext::class)->period((int) $actor->school_id);
+        $groups = DB::table('groups as g')->join('standards_link as c', 'c.id', '=', 'g.standardLink_id')
+            ->leftJoin('academy_group_settings as settings', 'settings.group_id', '=', 'g.id')
+            ->where('c.school_id', $actor->school_id)->where('c.academic_year_id', $period->id)->where('c.status', 1)
+            ->where('g.status', 1)->whereNull('g.deleted_at')->whereNull('c.deleted_at')
+            ->when(config('academy_backend.test_only'), fn ($q) => $q->where('settings.is_demo', 1))->count();
+        $learners = app(\App\Services\LearningAccess::class)->students($actor)->leftJoin('academy_student_journeys as journey', function ($j) use ($actor) {
+            $j->on('journey.student_id', '=', 'users.id')->where('journey.school_id', $actor->school_id);
+        });
+        $placement = (clone $learners)->where(fn ($q) => $q->whereNull('journey.id')->orWhereIn('journey.placement_status', ['pending','scheduled']))->count('users.id');
+        $pendingLeave = app(AcademyTeacherWorkspace::class)->leaves($actor)->where('l.status', 'pending')->count();
+        $events = DB::table('academy_learning_events')->where('school_id', $actor->school_id)->orderByDesc('id')->limit(8)->get(['id','event','student_id','created_at']);
+        return view('academy.admin-dashboard', compact('counts','groups','placement','pendingLeave','events') + ['layout'=>'layouts.admin.layout']);
+    }
+
 }
