@@ -28,6 +28,7 @@ class LearnerController extends Controller
     public function index(Request $request, LearningAccess $access)
     {
         $actor = $request->user();
+        if ((int) $actor->usergroup_id === 5) { return redirect('/learning/academy/groups'); }
         $q = $access->students($actor)->leftJoin('userprofiles as p', function ($j) {
             $j->on('p.user_id', '=', 'users.id')->whereNull('p.deleted_at');
         })->leftJoin('academy_student_journeys as j', 'j.student_id', '=', 'users.id')
@@ -54,9 +55,10 @@ class LearnerController extends Controller
         if ($request->query('stage') === 'completed') { $q->whereNotNull('j.completed_at'); }
         $students = $q->orderBy('p.firstname')->orderBy('users.id')->paginate(25, [
             'users.id', 'users.name', 'users.email', 'p.firstname', 'p.lastname', 'j.placement_status', 'j.level', 'j.unit', 'j.completed_at',
-            'current_settings.level as group_level', 'current_group.group_name as group_name', 'teacher.firstname as teacher_name', 'c.class_teacher_id', 'en.standardLink_id',
+            'current_group.id as group_id', 'current_settings.meeting_days', 'current_settings.start_time', 'current_settings.end_time', 'current_settings.level as group_level', 'current_group.group_name as group_name', 'teacher.firstname as teacher_name', 'c.class_teacher_id', 'en.standardLink_id',
         ])->withQueryString();
-        return view('academy.learners', ['students' => $students, 'layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
+        $summaries = app(\App\Services\AcademyLessons::class)->summary((int) $actor->school_id, $students->pluck('id')->all());
+        return view('academy.learners', ['students' => $students, 'summaries' => $summaries, 'layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
     }
 
     public function create(Request $request, string $type)
@@ -90,7 +92,7 @@ class LearnerController extends Controller
         if ((int) $actor->usergroup_id !== 3) {
             $groups->whereIn('g.standardLink_id', $enrollments->whereNull('deleted_at')->pluck('standardLink_id'));
         }
-        $groups = $groups->orderBy('g.group_name')->get(['g.id', 'g.group_name', 'settings.level', 'settings.schedule']);
+        $groups = $groups->orderBy('g.group_name')->get(['g.id', 'g.group_name', 'settings.level', 'settings.schedule', 'settings.meeting_days', 'settings.start_time', 'settings.end_time']);
         $parents = DB::table('student_parent_links as link')->join('users as u', 'u.id', '=', 'link.parent_id')
             ->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'u.id')->whereNull('p.deleted_at'); })
             ->where('link.school_id', $actor->school_id)->where('link.student_id', $student)->whereNull('link.deleted_at')->whereNull('u.deleted_at')
@@ -102,7 +104,14 @@ class LearnerController extends Controller
         $events = (int) $actor->usergroup_id === 3 ? DB::table('academy_learning_events')->where('school_id', $actor->school_id)->where('student_id', $student)->orderByDesc('id')->limit(30)->get() : collect();
         $attendance = DB::table('attendances')->where('school_id', $actor->school_id)->where('user_id', $student)->whereNull('deleted_at')->orderByDesc('date')->limit(15)->get(['date', 'session', 'status']);
         $homework = app(\App\Http\Controllers\LearningController::class)->homework($request, $student, $access)->getData(true);
-        return view('academy.student', compact('person', 'profile', 'account', 'journey', 'enrollments', 'groups', 'parents', 'parentOptions', 'feedback', 'events', 'attendance', 'homework') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
+        $teacherMessages = DB::table('academy_student_messages as m')->leftJoin('userprofiles as t', function ($j) { $j->on('t.user_id', '=', 'm.teacher_id')->whereNull('t.deleted_at'); })
+            ->where('m.school_id', $actor->school_id)->where('m.student_id', $student)->orderByDesc('m.id')
+            ->paginate(15, ['m.message', 'm.created_at', 't.firstname as teacher_name'], 'messages_page');
+        $lessonSummary = app(\App\Services\AcademyLessons::class)->summary((int) $actor->school_id, [$student])->get($student);
+        $lessonRecords = DB::table('academy_lesson_students as r')->join('academy_group_lessons as l', 'l.id', '=', 'r.lesson_id')
+            ->join('groups as g', 'g.id', '=', 'l.group_id')->where('r.school_id', $actor->school_id)->where('r.student_id', $student)
+            ->orderByDesc('l.lesson_date')->orderByDesc('l.start_time')->paginate(20, ['r.attendance', 'r.homework', 'l.lesson_date', 'l.start_time', 'l.topic', 'g.group_name'], 'records_page');
+        return view('academy.student', compact('teacherMessages', 'lessonSummary', 'lessonRecords', 'person', 'profile', 'account', 'journey', 'enrollments', 'groups', 'parents', 'parentOptions', 'feedback', 'events', 'attendance', 'homework') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
     }
 
     public function updateProfile(Request $request, int $student, AcademyStudents $students)
@@ -161,7 +170,7 @@ class LearnerController extends Controller
             ->where('c.school_id', $actor->school_id)->where('c.status', 1)->whereNull('c.deleted_at')->whereNull('g.deleted_at')
             ->where('c.academic_year_id', app(AcademyContext::class)->period((int) $actor->school_id)->id);
         if ((int) $actor->usergroup_id === 5) { $query->whereIn('c.id', app(AcademyAssignments::class)->classIds($actor)); }
-        $groups = $query->orderBy('g.group_name')->paginate(25, ['g.id', 'g.group_name', 'g.standardLink_id', 'c.class_teacher_id', 'settings.level', 'settings.schedule', 'teacher.firstname as teacher_name']);
+        $groups = $query->orderBy('g.group_name')->paginate(25, ['g.id', 'g.group_name', 'g.standardLink_id', 'c.class_teacher_id', 'settings.level', 'settings.schedule', 'settings.meeting_days', 'settings.start_time', 'settings.end_time', 'teacher.firstname as teacher_name']);
         $teachers = (int) $actor->usergroup_id === 3 ? DB::table('users as u')->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'u.id')->whereNull('p.deleted_at'); })
             ->where('u.school_id', $actor->school_id)->where('u.usergroup_id', 5)->where('u.status', 'active')->whereNull('u.deleted_at')->orderBy('p.firstname')->get(['u.id', 'u.email', 'p.firstname', 'p.lastname']) : collect();
         return view('academy.groups', compact('groups', 'teachers') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
@@ -171,7 +180,11 @@ class LearnerController extends Controller
     {
         $actor = $request->user(); $students = app(AcademyStudents::class); $students->admin($actor);
         $data = $request->validate(['group_name' => 'required|string|max:100', 'level' => 'required|integer|between:1,6',
-            'teacher_id' => ['required', Rule::exists('users', 'id')->where('school_id', $actor->school_id)->where('usergroup_id', 5)->where('status', 'active')->whereNull('deleted_at')], 'schedule' => 'nullable|string|max:500']);
+            'teacher_id' => ['required', Rule::exists('users', 'id')->where('school_id', $actor->school_id)->where('usergroup_id', 5)->where('status', 'active')->whereNull('deleted_at')], 'schedule' => 'nullable|string|max:500',
+            'structured_schedule' => 'nullable|boolean', 'meeting_days' => 'required_if:structured_schedule,1|nullable|array|min:1|max:7',
+            'meeting_days.*' => ['required', 'distinct', Rule::in(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])],
+            'start_time' => 'required_if:structured_schedule,1|required_with:meeting_days|nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i|after:start_time']);
         DB::transaction(function () use ($actor, $data, $group, $students) {
             DB::table('schools')->where('id', $actor->school_id)->lockForUpdate()->first();
             if ($group) {
@@ -212,6 +225,9 @@ class LearnerController extends Controller
                 }
             } else { $record = app(AcademyGroups::class)->create((int) $actor->school_id, $data); }
             DB::table('academy_group_settings')->updateOrInsert(['group_id' => $record->id], ['school_id' => $actor->school_id, 'level' => $data['level'], 'schedule' => $data['schedule'] ?? null, 'created_at' => now(), 'updated_at' => now()]);
+            $calendar = array_intersect_key($data, array_flip(['meeting_days', 'start_time', 'end_time']));
+            if (array_key_exists('meeting_days', $calendar)) { $calendar['meeting_days'] = json_encode($calendar['meeting_days'] ?? []); }
+            if ($calendar) { DB::table('academy_group_settings')->where('group_id', $record->id)->update($calendar + ['timezone' => 'Africa/Cairo']); }
             $students->log($actor, null, $group ? 'group_updated' : 'group_created', ['group_id' => $record->id, 'name' => $data['group_name'], 'level' => $data['level'], 'teacher_id' => $data['teacher_id']]);
             $period = app(AcademyContext::class)->period((int) $actor->school_id);
             DB::afterCommit(fn () => Cache::forget('standardLink'.$actor->school_id.':'.$period->id));

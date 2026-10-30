@@ -12,6 +12,7 @@
     <p class="my-2">Group: <strong>{{ $enrollment->group_name }}</strong> · Responsible teacher: {{ $enrollment->teacher_name ?: 'Teacher #'.$enrollment->class_teacher_id }}</p>
     @empty<p class="my-2">No group assigned yet.</p>@endforelse
     @foreach($groups as $group)
+        <p class="my-2">{{ $group->group_name }}: @include('academy.schedule')</p>
         @if($group->schedule)<p>{{ $group->group_name }}: {{ $group->schedule }}</p>@endif
     @endforeach
 </div>
@@ -62,8 +63,20 @@
     <p>Complete placement first. Existing groups need a course level set in <a class="underline" href="{{ url('/learning/academy/groups') }}">Groups & teachers</a>.</p>
 </div>
 @endif
+@if($role === 5)
+<form id="teacher-feedback" class="bg-white rounded p-4 my-3" method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/message') }}">
+    @csrf<h2 class="font-semibold text-lg">Send feedback message</h2>
+    <label class="block my-2">Message for student & parent<textarea name="message" required minlength="3" maxlength="5000" class="tw-form-control block w-full">{{ old('message') }}</textarea></label>
+    <button class="custom-green text-white px-3 py-2 rounded">Send feedback message</button>
+</form>
+@endif
+<section class="bg-white rounded p-4 my-3">
+    <h2 class="font-semibold text-lg">Teacher messages</h2>
+    @forelse($teacherMessages as $message)<article class="border-b py-3"><p class="font-semibold">{{ $message->teacher_name ?: 'Teacher' }} · {{ $message->created_at }}</p><p style="white-space: pre-wrap">{{ $message->message }}</p></article>@empty<p class="my-2">No teacher messages yet.</p>@endforelse
+    {{ $teacherMessages->links() }}
+</section>
 @if($role === 5 && $journey->level && !$journey->completed_at)
-<form class="bg-white rounded p-4 my-3" method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/feedback') }}">
+<form id="unit-feedback" class="bg-white rounded p-4 my-3" method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/feedback') }}">
     @csrf
     <h2 class="font-semibold text-lg">Teacher feedback · Level {{ $journey->level }}, Unit {{ $journey->unit }}</h2>
     <input type="hidden" name="expected_level" value="{{ $journey->level }}"><input type="hidden" name="expected_unit" value="{{ $journey->unit }}">
@@ -85,6 +98,15 @@
     </article>
     @empty<p class="my-3">No feedback shared yet.</p>@endforelse
     {{ $feedback->links() }}
+</section>
+<section class="bg-white rounded p-4 my-3">
+    <h2 class="font-semibold text-lg">Attendance & homework summary</h2>
+    @include('academy.lesson-summary', ['summary' => $lessonSummary])
+    <p class="my-2">Only statuses recorded by the teacher are counted. These totals cover recorded group lessons; earlier legacy attendance remains below.</p>
+    <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-left"><th class="p-2">Lesson</th><th class="p-2">Group</th><th class="p-2">Attendance</th><th class="p-2">Homework</th></tr></thead><tbody>
+    @forelse($lessonRecords as $row)<tr class="border-b"><td class="p-2">{{ $row->lesson_date }} · {{ substr($row->start_time, 0, 5) }} Cairo<br>{{ $row->topic }}</td><td class="p-2">{{ $row->group_name }}</td><td class="p-2">{{ ['pending' => 'Not recorded', 'present' => 'Present', 'absent' => 'Absent', 'excused' => 'Excused'][$row->attendance] }}</td><td class="p-2">{{ ['not_assigned' => 'No homework assigned', 'pending' => 'Awaiting review', 'done' => 'Done', 'missing' => 'Not done'][$row->homework] }}</td></tr>@empty<tr><td colspan="4" class="p-2">No group lessons recorded yet.</td></tr>@endforelse
+    </tbody></table></div>
+    {{ $lessonRecords->links() }}
 </section>
 <section class="bg-white rounded p-4 my-3">
     <h2 class="font-semibold text-lg">Recent homework</h2>

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Academy\LearnerController;
+use App\Http\Controllers\Academy\GroupLessonController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth')->prefix('learning/academy')->group(function () {
@@ -8,6 +9,11 @@ Route::middleware('auth')->prefix('learning/academy')->group(function () {
     Route::get('/accounts/new/{type}', [LearnerController::class, 'create']);
     Route::post('/accounts/new/{type}', [LearnerController::class, 'store']);
     Route::get('/groups', [LearnerController::class, 'groups']);
+    Route::get('/groups/{group}', [GroupLessonController::class, 'show'])->whereNumber('group');
+    Route::post('/groups/{group}/students', [GroupLessonController::class, 'addStudents'])->whereNumber('group');
+    Route::post('/groups/{group}/lessons', [GroupLessonController::class, 'start'])->whereNumber('group');
+    Route::get('/groups/{group}/lessons/{lesson}', [GroupLessonController::class, 'show'])->whereNumber(['group', 'lesson']);
+    Route::post('/groups/{group}/lessons/{lesson}', [GroupLessonController::class, 'save'])->whereNumber(['group', 'lesson']);
     Route::post('/groups', [LearnerController::class, 'saveGroup']);
     Route::post('/groups/{group}', [LearnerController::class, 'saveGroup'])->whereNumber('group');
     Route::post('/groups/{group}/archive', [LearnerController::class, 'archiveGroup'])->whereNumber('group');
@@ -19,6 +25,7 @@ Route::middleware('auth')->prefix('learning/academy')->group(function () {
     Route::post('/students/{student}/parent', [LearnerController::class, 'parent'])->whereNumber('student');
     Route::post('/students/{student}/group', [LearnerController::class, 'assign'])->whereNumber('student');
     Route::post('/students/{student}/feedback', [LearnerController::class, 'feedback'])->whereNumber('student');
+    Route::post('/students/{student}/message', [GroupLessonController::class, 'message'])->whereNumber('student');
     Route::post('/students/{student}/feedback/{feedback}/read', [LearnerController::class, 'readFeedback'])->whereNumber(['student', 'feedback']);
 });
 

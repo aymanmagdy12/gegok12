@@ -9,7 +9,7 @@
     if ($academyPrefix) {
         $academyLinks += ['Dashboard' => '/'.$academyPrefix.'/dashboard', 'Homework' => '/'.$academyPrefix.'/homeworks', 'Messages' => '/'.$academyPrefix.'/conversations', 'Notices' => '/'.$academyPrefix.'/notices'];
     }
-    if ($academyRole === 5) { $academyLinks['Attendance'] = '/teacher/attendance/add'; }
+    if ($academyRole === 5) { $academyLinks['Attendance & homework'] = '/learning/academy/groups'; }
 @endphp
 <ul class="list-reset text-sm">
 @foreach($academyLinks as $label => $path)
