@@ -1242,4 +1242,15 @@ class AcademyBackendTest extends TestCase
         $this->actingAs($this->actor(2,5))->getJson('/learning/academy/groups/1?cycle[]=bad')->assertUnprocessable()->assertJsonValidationErrors('cycle');
     }
 
+    public function test_inactive_group_does_not_appear_as_current_progress_but_history_is_retained(): void
+    {
+        $service=app(\App\Services\AcademyChecklists::class);
+        $cycle=$service->open($this->actor(2,5),1);
+        $service->save($this->actor(2,5),1,$cycle,3,['revision'=>0,'marks'=>$this->eightMarks('1','1')]);
+        DB::table('groups')->where('id',1)->update(['status'=>0]);
+        $this->assertNull($service->student($this->actor(4,7),3)['participant']);
+        $this->assertEquals(100,$service->student($this->actor(4,7),3,$cycle)['attendance_percent']);
+        $this->assertCount(0,app(\App\Services\AcademyLessons::class)->rosterPreview($this->actor(2,5),[1]));
+    }
+
 }

@@ -94,7 +94,7 @@ class LearnerController extends Controller
             ->get(['a.id', 'a.standardLink_id', 'a.deleted_at', 'a.created_at', 's.name as group_name', 't.firstname as teacher_name', 'c.class_teacher_id']);
         $groups = DB::table('groups as g')->join('standards_link as c', 'c.id', '=', 'g.standardLink_id')
             ->leftJoin('academy_group_settings as settings', 'settings.group_id', '=', 'g.id')
-            ->where('c.school_id', $actor->school_id)->where('c.status', 1)->whereNull('c.deleted_at')->whereNull('g.deleted_at');
+            ->where('c.school_id', $actor->school_id)->where('c.status', 1)->where('g.status', 1)->whereNull('c.deleted_at')->whereNull('g.deleted_at');
         if ((int) $actor->usergroup_id !== 3) {
             $groups->whereIn('g.standardLink_id', $enrollments->whereNull('deleted_at')->pluck('standardLink_id'));
         }
@@ -174,7 +174,7 @@ class LearnerController extends Controller
         $query = DB::table('groups as g')->join('standards_link as c', 'c.id', '=', 'g.standardLink_id')
             ->leftJoin('academy_group_settings as settings', 'settings.group_id', '=', 'g.id')
             ->leftJoin('userprofiles as teacher', function ($j) { $j->on('teacher.user_id', '=', 'c.class_teacher_id')->whereNull('teacher.deleted_at'); })
-            ->where('c.school_id', $actor->school_id)->where('c.status', 1)->whereNull('c.deleted_at')->whereNull('g.deleted_at')
+            ->where('c.school_id', $actor->school_id)->where('c.status', 1)->where('g.status', 1)->whereNull('c.deleted_at')->whereNull('g.deleted_at')
             ->where('c.academic_year_id', app(AcademyContext::class)->period((int) $actor->school_id)->id);
         if (config('academy_backend.test_only')) { $query->where('settings.is_demo', 1); }
         if ((int) $actor->usergroup_id === 5) { $query->whereIn('c.id', app(AcademyAssignments::class)->classIds($actor)); }
