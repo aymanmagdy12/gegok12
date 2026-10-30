@@ -80,6 +80,10 @@ class AcademyBackendTest extends TestCase
         (require database_path('migrations/2026_10_30_000002_create_academy_student_journeys.php'))->up();
         (require database_path('migrations/2026_10_30_000003_add_academy_group_lessons.php'))->up();
         Schema::create('settings', function (Blueprint $t) { $t->id(); $t->string('key'); $t->string('value'); $t->timestamps(); });
+        Schema::create('activity_log', function (Blueprint $t) {
+            $t->id(); $t->string('log_name')->nullable(); $t->text('description'); $t->string('subject_type')->nullable(); $t->unsignedBigInteger('subject_id')->nullable();
+            $t->string('causer_type')->nullable(); $t->unsignedBigInteger('causer_id')->nullable(); $t->json('properties')->nullable(); $t->string('event')->nullable(); $t->uuid('batch_uuid')->nullable(); $t->timestamps();
+        });
         Schema::create('school_details', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('school_id'); $t->string('meta_key'); $t->string('meta_value')->nullable(); $t->timestamps(); $t->softDeletes(); });
         Schema::create('notice_board', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('standardLink_id')->nullable();
@@ -1251,6 +1255,15 @@ class AcademyBackendTest extends TestCase
         $this->assertNull($service->student($this->actor(4,7),3)['participant']);
         $this->assertEquals(100,$service->student($this->actor(4,7),3,$cycle)['attendance_percent']);
         $this->assertCount(0,app(\App\Services\AcademyLessons::class)->rosterPreview($this->actor(2,5),[1]));
+    }
+
+    public function test_real_login_persists_session_and_audit_without_faking_login_event(): void
+    {
+        config(['queue.default'=>'sync','academy_backend.login_email_notifications'=>false]);
+        DB::table('users')->where('id',2)->update(['password'=>\Illuminate\Support\Facades\Hash::make('IsolatedBrowserTest123!')]);
+        $this->post('/login',['email'=>'user2@example.test','password'=>'IsolatedBrowserTest123!'])->assertRedirect('/learning/academy');
+        $this->assertAuthenticated();
+        $this->assertDatabaseHas('activity_log',['causer_id'=>2,'description'=>'Logged In']);
     }
 
 }

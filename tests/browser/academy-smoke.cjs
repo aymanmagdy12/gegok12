@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
         const row = {width,role,consoleErrors:[],pageErrors:[],failedRequests:[]};
         report.push(row);
         page.on('console', m => {if(m.type()==='error') row.consoleErrors.push(m.text());});
-        page.on('pageerror', e => row.pageErrors.push(e.message));
+        page.on('pageerror', e => row.pageErrors.push(e.stack || e.message));
         page.on('response', r => {if(r.status()>=400 && r.url().startsWith('http://127.0.0.1:8000')) row.failedRequests.push({url:r.url(),status:r.status()});});
         // External services are not exercised with fixture data.
         await page.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:8000') ? route.continue() : route.abort());

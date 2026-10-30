@@ -43,6 +43,8 @@ Authentication/logout/reset password; admin registration of student/parent/teach
 | 20 | Medium | `resources/assets/js/components/noticeboard/{Create,Edit}.vue` | Repeated submit sends concurrent writes; network errors throw when `error.response` is missing, and empty 200 responses discard entered data. |
 | 21 | Medium | `resources/assets/js/components/noticeboard/Edit.vue` | Editor still uses the Vue 2 binding instead of the installed Vue 3 Quill editor, so edited content may never reach the request. |
 
+| 22 | High | `resources/views/layouts/empty.blade.php:head scripts` | Login scripts execute before `body`/`#app` exist. Chromium observed a null `appendChild` error; defer execution while preserving script order. |
+
 Potential issues require evidence before changes: large legacy JavaScript bundle, optional addon routes, live URL/proxy configuration, SMTP credentials and real parent-account layout. No assumption that a development-server HTTP 200 proves the public tunnel or authenticated dashboard works.
 
 ## Verification boundaries
