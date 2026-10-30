@@ -52,6 +52,39 @@ class AcademyStudents
         });
     }
 
+    public function updateProfile(object $actor, int $student, array $input): void
+    {
+        $this->admin($actor);
+        app(LearningAccess::class)->student($actor, $student);
+        if (isset($input['email'])) { $input['email'] = mb_strtolower(trim($input['email'])); }
+        $data = Validator::make($input, [
+            'firstname' => 'required|string|max:100', 'lastname' => 'nullable|string|max:100',
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($student)],
+            'mobile_no' => 'nullable|string|max:30', 'date_of_birth' => 'nullable|date|before:today',
+        ])->validate();
+        DB::transaction(function () use ($actor, $student, $data) {
+            DB::table('users')->where('id', $student)->where('school_id', $actor->school_id)->update([
+                'email' => $data['email'], 'mobile_no' => $data['mobile_no'] ?? null, 'updated_at' => now(),
+            ]);
+            DB::table('userprofiles')->where('user_id', $student)->where('school_id', $actor->school_id)->whereNull('deleted_at')->update([
+                'firstname' => $data['firstname'], 'lastname' => $data['lastname'] ?? null,
+                'date_of_birth' => $data['date_of_birth'] ?? null, 'updated_at' => now(),
+            ]);
+            $this->log($actor, $student, 'student_details_updated', ['fields' => array_keys($data)]);
+        });
+    }
+
+    public function unlinkParent(object $actor, int $student, int $parent): void
+    {
+        $this->admin($actor);
+        app(LearningAccess::class)->student($actor, $student);
+        DB::transaction(function () use ($actor, $student, $parent) {
+            DB::table('student_parent_links')->where('school_id', $actor->school_id)->where('student_id', $student)
+                ->where('parent_id', $parent)->whereNull('deleted_at')->update(['deleted_at' => now(), 'updated_at' => now()]);
+            $this->log($actor, $student, 'parent_unlinked', ['parent_id' => $parent]);
+        });
+    }
+
     /** Lazily initialize existing students, without pretending they took a placement test. */
     public function journey(object $actor, int $student): object
     {

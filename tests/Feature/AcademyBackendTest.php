@@ -447,4 +447,67 @@ class AcademyBackendTest extends TestCase
         $this->assertSame(1, $view->getData()['students']->total());
     }
 
+
+    public function test_profile_edit_and_parent_unlink_update_original_records_and_revoke_access(): void
+    {
+        $service = app(\App\Services\AcademyStudents::class);
+        $service->updateProfile($this->actor(1, 3), 3, ['firstname' => 'Updated', 'lastname' => 'Child', 'email' => 'updated@example.test', 'mobile_no' => '01000000000']);
+        $this->assertDatabaseHas('users', ['id' => 3, 'email' => 'updated@example.test']);
+        $this->assertDatabaseHas('userprofiles', ['user_id' => 3, 'firstname' => 'Updated']);
+        $service->unlinkParent($this->actor(1, 3), 3, 4);
+        $this->assertFalse(app(LearningAccess::class)->students($this->actor(4, 7))->where('users.id', 3)->exists());
+        $this->assertDatabaseHas('academy_learning_events', ['student_id' => 3, 'event' => 'parent_unlinked']);
+    }
+
+    public function test_group_edit_connects_original_class_labels_units_and_responsible_teacher(): void
+    {
+        $request = Request::create('/learning/academy/groups/1', 'POST', ['group_name' => 'English Saturday', 'level' => 2, 'teacher_id' => 5, 'schedule' => 'Saturday 5 pm']);
+        $request->setUserResolver(fn () => $this->actor(1, 3));
+        app(\App\Http\Controllers\Academy\LearnerController::class)->saveGroup($request, 1);
+        $this->assertDatabaseHas('groups', ['id' => 1, 'group_name' => 'English Saturday']);
+        $this->assertDatabaseHas('academy_group_settings', ['group_id' => 1, 'level' => 2, 'schedule' => 'Saturday 5 pm']);
+        $this->assertDatabaseHas('standards_link', ['id' => 1, 'class_teacher_id' => 5]);
+        $this->assertSame(2, DB::table('class_teacher_links')->where('standardLink_id', 1)->where('teacher_id', 5)->whereNull('deleted_at')->count());
+        $this->assertFalse(app(\App\Services\AcademyAssignments::class)->allows($this->actor(2, 5), 1));
+        $this->assertTrue(app(\App\Services\AcademyAssignments::class)->allows($this->actor(5, 5), 1));
+    }
+
+    public function test_group_with_students_cannot_be_archived_and_history_is_kept(): void
+    {
+        $request = Request::create('/learning/academy/groups/1/archive', 'POST');
+        $request->setUserResolver(fn () => $this->actor(1, 3));
+        try { app(\App\Http\Controllers\Academy\LearnerController::class)->archiveGroup($request, 1); $this->fail('Enrolled group must not be archived.'); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('group', $e->errors()); }
+        $this->assertDatabaseHas('groups', ['id' => 1, 'deleted_at' => null]);
+        $this->assertDatabaseHas('student_academics', ['id' => 1, 'deleted_at' => null]);
+    }
+
+    public function test_all_four_roles_can_render_connected_learning_record_without_frontend_build(): void
+    {
+        $this->prepareJourney();
+        $directory = sys_get_temp_dir().'/academy-view-'.uniqid();
+        foreach (['layouts/admin', 'layouts/teacher', 'layouts/student', 'academy'] as $path) { mkdir($directory.'/'.$path, 0777, true); }
+        foreach (['layouts/admin/layout', 'layouts/teacher/layout', 'layouts/student/layout', 'academy/parent-layout'] as $path) {
+            file_put_contents($directory.'/'.$path.'.blade.php', '@yield("content")');
+        }
+        view()->getFinder()->prependLocation($directory);
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        try {
+            foreach ([[1, 3], [2, 5], [3, 6], [4, 7]] as [$id, $role]) {
+                $request = Request::create('/learning/academy/students/3');
+                $request->setUserResolver(fn () => $this->actor($id, $role));
+                Auth::setUser($this->actor($id, $role));
+                $html = app(\App\Http\Controllers\Academy\LearnerController::class)->show($request, 3, app(LearningAccess::class), app(\App\Services\AcademyStudents::class))->render();
+                $this->assertStringContainsString('Learning record', $html);
+                $this->assertStringContainsString('Teacher feedback', $html);
+                $this->assertSame($role === 3, str_contains($html, 'Placement notes (administration only)'));
+                if ($role === 5) { $this->assertStringContainsString('Share feedback', $html); }
+            }
+        } finally {
+            foreach (['layouts/admin/layout', 'layouts/teacher/layout', 'layouts/student/layout', 'academy/parent-layout'] as $path) { unlink($directory.'/'.$path.'.blade.php'); }
+            foreach (['layouts/admin', 'layouts/teacher', 'layouts/student', 'academy', 'layouts'] as $path) { rmdir($directory.'/'.$path); }
+            rmdir($directory);
+        }
+    }
+
 }

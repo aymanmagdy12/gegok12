@@ -13,6 +13,8 @@ Route::middleware('auth')->prefix('learning/academy')->group(function () {
     Route::post('/groups/{group}/archive', [LearnerController::class, 'archiveGroup'])->whereNumber('group');
     Route::get('/activity', [LearnerController::class, 'activity']);
     Route::get('/students/{student}', [LearnerController::class, 'show'])->whereNumber('student');
+    Route::post('/students/{student}/details', [LearnerController::class, 'updateProfile'])->whereNumber('student');
+    Route::post('/students/{student}/parent/unlink', [LearnerController::class, 'unlinkParent'])->whereNumber('student');
     Route::post('/students/{student}/placement', [LearnerController::class, 'placement'])->whereNumber('student');
     Route::post('/students/{student}/parent', [LearnerController::class, 'parent'])->whereNumber('student');
     Route::post('/students/{student}/group', [LearnerController::class, 'assign'])->whereNumber('student');

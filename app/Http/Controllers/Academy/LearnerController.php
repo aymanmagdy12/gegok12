@@ -38,7 +38,7 @@ class LearnerController extends Controller
             })->leftJoin('standards_link as c', 'c.id', '=', 'en.standardLink_id')
             ->leftJoin('groups as current_group', function ($join) {
                 $join->on('current_group.standardLink_id', '=', 'c.id')->whereNull('current_group.deleted_at')
-                    ->whereRaw('current_group.id = (select min(cg.id) from groups cg where cg.standardLink_id = c.id and cg.deleted_at is null)');
+                    ->where('current_group.id', '=', function ($q) { $q->selectRaw('min(cg.id)')->from('groups as cg')->whereColumn('cg.standardLink_id', 'c.id')->whereNull('cg.deleted_at'); });
             })->leftJoin('academy_group_settings as current_settings', 'current_settings.group_id', '=', 'current_group.id')
             ->leftJoin('sections as section', 'section.id', '=', 'c.section_id')
             ->leftJoin('userprofiles as teacher', function ($j) { $j->on('teacher.user_id', '=', 'c.class_teacher_id')->whereNull('teacher.deleted_at'); });
@@ -79,6 +79,7 @@ class LearnerController extends Controller
         $actor = $request->user(); $person = $access->student($actor, $student);
         $journey = $students->journey($actor, $student);
         $profile = DB::table('userprofiles')->where('user_id', $student)->where('school_id', $actor->school_id)->whereNull('deleted_at')->first();
+        $account = (int) $actor->usergroup_id === 3 ? DB::table('users')->where('id', $student)->first(['email', 'mobile_no']) : null;
         $enrollments = DB::table('student_academics as a')->join('standards_link as c', 'c.id', '=', 'a.standardLink_id')
             ->join('sections as s', 's.id', '=', 'c.section_id')->leftJoin('userprofiles as t', function ($j) { $j->on('t.user_id', '=', 'c.class_teacher_id')->whereNull('t.deleted_at'); })
             ->where('a.school_id', $actor->school_id)->where('a.user_id', $student)->orderByDesc('a.id')
@@ -101,7 +102,20 @@ class LearnerController extends Controller
         $events = (int) $actor->usergroup_id === 3 ? DB::table('academy_learning_events')->where('school_id', $actor->school_id)->where('student_id', $student)->orderByDesc('id')->limit(30)->get() : collect();
         $attendance = DB::table('attendances')->where('school_id', $actor->school_id)->where('user_id', $student)->whereNull('deleted_at')->orderByDesc('date')->limit(15)->get(['date', 'session', 'status']);
         $homework = app(\App\Http\Controllers\LearningController::class)->homework($request, $student, $access)->getData(true);
-        return view('academy.student', compact('person', 'profile', 'journey', 'enrollments', 'groups', 'parents', 'parentOptions', 'feedback', 'events', 'attendance', 'homework') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
+        return view('academy.student', compact('person', 'profile', 'account', 'journey', 'enrollments', 'groups', 'parents', 'parentOptions', 'feedback', 'events', 'attendance', 'homework') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
+    }
+
+    public function updateProfile(Request $request, int $student, AcademyStudents $students)
+    {
+        $students->updateProfile($request->user(), $student, $request->all());
+        return back()->with('successmessage', 'Student details saved.');
+    }
+
+    public function unlinkParent(Request $request, int $student, AcademyStudents $students)
+    {
+        $data = $request->validate(['parent_id' => 'required|integer']);
+        $students->unlinkParent($request->user(), $student, (int) $data['parent_id']);
+        return back()->with('successmessage', 'Parent access to this child removed.');
     }
 
     public function placement(Request $request, int $student, AcademyStudents $students)
@@ -169,9 +183,33 @@ class LearnerController extends Controller
                     ->where('a.standardLink_id', $link->id)->whereNull('a.deleted_at')->where('j.level', '!=', $data['level'])->exists();
                 if ($mismatch) { throw ValidationException::withMessages(['level' => 'Move existing students to a suitable group before changing its level.']); }
                 $record->update(['group_name' => $data['group_name']]);
-                DB::table('standards_link')->where('id', $link->id)->update(['class_teacher_id' => $data['teacher_id'], 'updated_at' => now()]);
+                $otherLevel = DB::table('academy_group_settings as s')->join('groups as g', 'g.id', '=', 's.group_id')
+                    ->where('g.standardLink_id', $link->id)->where('g.id', '!=', $record->id)->whereNull('g.deleted_at')->where('s.level', '!=', $data['level'])->exists();
+                if ($otherLevel) { throw ValidationException::withMessages(['level' => 'Groups sharing a classroom must use the same course level.']); }
+                $slug = 'academy-'.$actor->school_id.'-level-'.$data['level'];
+                $standardId = DB::table('standards')->where('school_id', $actor->school_id)->where('slug', $slug)->whereNull('deleted_at')->value('id');
+                if (!$standardId) {
+                    $standardId = DB::table('standards')->insertGetId(['school_id' => $actor->school_id, 'slug' => $slug,
+                        'name' => 'Level '.$data['level'], 'order' => $data['level'], 'status' => 1, 'created_at' => now(), 'updated_at' => now()]);
+                }
+                // Keep original class labels, unit subjects and teacher assignments connected.
+                $sectionId = DB::table('sections')->where('school_id', $actor->school_id)->where('name', $data['group_name'])->whereNull('deleted_at')->value('id');
+                if (!$sectionId) {
+                    $sectionId = DB::table('sections')->insertGetId(['school_id' => $actor->school_id, 'name' => $data['group_name'], 'status' => 1, 'created_at' => now(), 'updated_at' => now()]);
+                }
+                DB::table('standards_link')->where('id', $link->id)->update(['standard_id' => $standardId, 'section_id' => $sectionId, 'class_teacher_id' => $data['teacher_id'], 'updated_at' => now()]);
                 DB::table('class_teacher_links')->where('standardLink_id', $link->id)->where('school_id', $actor->school_id)->whereNull('deleted_at')
-                    ->update(['teacher_id' => $data['teacher_id'], 'updated_at' => now()]);
+                    ->update(['deleted_at' => now(), 'updated_at' => now()]);
+                foreach ([1, 2] as $unit) {
+                    $subjectId = DB::table('subjects')->where('school_id', $actor->school_id)->where('academic_year_id', $link->academic_year_id)
+                        ->where('standard_id', $standardId)->where('section_id', $sectionId)->where('name', 'Unit '.$unit)->whereNull('deleted_at')->value('id');
+                    if (!$subjectId) {
+                        $subjectId = DB::table('subjects')->insertGetId(['school_id' => $actor->school_id, 'academic_year_id' => $link->academic_year_id,
+                            'standard_id' => $standardId, 'section_id' => $sectionId, 'name' => 'Unit '.$unit, 'type' => 'core', 'status' => 1, 'created_at' => now(), 'updated_at' => now()]);
+                    }
+                    DB::table('class_teacher_links')->insert(['school_id' => $actor->school_id, 'academic_year_id' => $link->academic_year_id,
+                        'standardLink_id' => $link->id, 'teacher_id' => $data['teacher_id'], 'subject_id' => $subjectId, 'status' => 1, 'created_at' => now(), 'updated_at' => now()]);
+                }
             } else { $record = app(AcademyGroups::class)->create((int) $actor->school_id, $data); }
             DB::table('academy_group_settings')->updateOrInsert(['group_id' => $record->id], ['school_id' => $actor->school_id, 'level' => $data['level'], 'schedule' => $data['schedule'] ?? null, 'created_at' => now(), 'updated_at' => now()]);
             $students->log($actor, null, $group ? 'group_updated' : 'group_created', ['group_id' => $record->id, 'name' => $data['group_name'], 'level' => $data['level'], 'teacher_id' => $data['teacher_id']]);

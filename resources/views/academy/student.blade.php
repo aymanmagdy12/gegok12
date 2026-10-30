@@ -16,6 +16,16 @@
     @endforeach
 </div>
 @if($role === 3)
+<details class="bg-white rounded p-4 my-3"><summary class="font-semibold cursor-pointer">Edit student details</summary>
+    <form method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/details') }}">@csrf
+        @foreach(['firstname' => 'First name', 'lastname' => 'Last name', 'date_of_birth' => 'Birthday'] as $field => $label)
+        <label class="block my-2">{{ $label }}<input class="tw-form-control" name="{{ $field }}" type="{{ $field === 'date_of_birth' ? 'date' : 'text' }}" value="{{ old($field, $profile->$field ?? '') }}" @required($field === 'firstname')></label>
+        @endforeach
+        <label class="block my-2">Login email <input type="email" required name="email" class="tw-form-control" value="{{ old('email', $account->email) }}"></label>
+        <label class="block my-2">Phone <input name="mobile_no" class="tw-form-control" value="{{ old('mobile_no', $account->mobile_no) }}"></label>
+        <button class="blue-bg text-white px-3 py-2 rounded">Save details</button>
+    </form>
+</details>
 <div class="bg-white rounded p-4 my-3">
     <h2 class="font-semibold text-lg">1. Placement & starting point</h2>
     <form method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/placement') }}">
@@ -33,7 +43,11 @@
 </div>
 <div class="bg-white rounded p-4 my-3">
     <h2 class="font-semibold text-lg">2. Parent account</h2>
-    @foreach($parents as $parent)<p class="my-2">{{ trim(($parent->firstname ?? '').' '.($parent->lastname ?? '')) }} · {{ $parent->email }}</p>@endforeach
+    @foreach($parents as $parent)
+    <div class="my-2">{{ trim(($parent->firstname ?? '').' '.($parent->lastname ?? '')) }} · {{ $parent->email }}
+        <form method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/parent/unlink') }}">@csrf<input type="hidden" name="parent_id" value="{{ $parent->id }}"><button class="underline">Remove access to this child</button></form>
+    </div>
+    @endforeach
     <form class="my-3" method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/parent') }}">@csrf
         <label>Parent <select required name="parent_id" class="tw-form-control"><option value="">Choose existing parent</option>@foreach($parentOptions as $parent)<option value="{{ $parent->id }}">{{ $parent->email }}</option>@endforeach</select></label>
         <button class="blue-bg text-white px-3 py-2 rounded">Link parent</button>
