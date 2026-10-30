@@ -175,10 +175,11 @@ class LearnerController extends Controller
             ->where('c.academic_year_id', app(AcademyContext::class)->period((int) $actor->school_id)->id);
         if (config('academy_backend.test_only')) { $query->where('settings.is_demo', 1); }
         if ((int) $actor->usergroup_id === 5) { $query->whereIn('c.id', app(AcademyAssignments::class)->classIds($actor)); }
-        $filters = $request->validate(['level' => 'nullable|integer|between:1,6', 'teacher_id' => ['nullable', 'integer', Rule::exists('users', 'id')->where('school_id', $actor->school_id)->where('usergroup_id', 5)->whereNull('deleted_at')]]);
+        $filters = $request->validate(['level' => ['nullable', Rule::in(['1','2','3','4','5','6','unconfigured'])], 'teacher_id' => ['nullable', 'integer', Rule::exists('users', 'id')->where('school_id', $actor->school_id)->where('usergroup_id', 5)->whereNull('deleted_at')]]);
         $filtersReady = (int) $actor->usergroup_id === 5 || (!empty($filters['level']) && !empty($filters['teacher_id']));
         if (!$filtersReady) { $query->whereRaw('1 = 0'); }
-        if (!empty($filters['level'])) { $query->where('settings.level', $filters['level']); }
+        if (($filters['level'] ?? '') === 'unconfigured') { $query->whereNull('settings.level'); }
+        elseif (!empty($filters['level'])) { $query->where('settings.level', $filters['level']); }
         if ((int) $actor->usergroup_id === 3 && !empty($filters['teacher_id'])) { $query->where('c.class_teacher_id', $filters['teacher_id']); }
         $groups = $query->orderBy('g.group_name')->paginate(25, ['g.id', 'g.group_name', 'g.standardLink_id', 'c.class_teacher_id', 'settings.level', 'settings.schedule', 'settings.meeting_days', 'settings.start_time', 'settings.end_time', 'teacher.firstname as teacher_name'])->withQueryString();
         $teachers = (int) $actor->usergroup_id === 3 ? DB::table('users as u')->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'u.id')->whereNull('p.deleted_at'); })

@@ -5,7 +5,7 @@
 </div>
 @include('academy.messages')
 <form method="GET" class="bg-white rounded p-4 my-3 flex flex-wrap items-end">
-    <label class="block mr-3 my-2">Level <select name="level" class="tw-form-control block" @required($role === 3)><option value="">{{ $role === 3 ? 'Choose level' : 'All my levels' }}</option>@foreach(range(1,6) as $level)<option value="{{ $level }}" @selected((int) request('level') === $level)>Level {{ $level }}</option>@endforeach</select></label>
+    <label class="block mr-3 my-2">Level <select name="level" class="tw-form-control block" @required($role === 3)><option value="">{{ $role === 3 ? 'Choose level' : 'All my levels' }}</option>@foreach(range(1,6) as $level)<option value="{{ $level }}" @selected((int) request('level') === $level)>Level {{ $level }}</option>@endforeach<option value="unconfigured" @selected(request('level') === 'unconfigured')>Needs level setup</option></select></label>
     @if($role === 3)<label class="block mr-3 my-2">Teacher <select name="teacher_id" required class="tw-form-control block"><option value="">Choose teacher</option>@foreach($teachers as $teacher)<option value="{{ $teacher->id }}" @selected((int) request('teacher_id') === (int) $teacher->id)>{{ trim(($teacher->firstname ?? '').' '.($teacher->lastname ?? '')) }} · {{ $teacher->email }}</option>@endforeach</select></label>@endif
     <button class="blue-bg text-white px-4 py-2 rounded my-2">Show groups</button>
 </form>

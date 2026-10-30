@@ -844,4 +844,52 @@ class AcademyBackendTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => 2, 'deleted_at' => null]);
     }
 
+
+    public function test_legacy_group_without_level_remains_accessible_for_setup_after_selecting_teacher(): void
+    {
+        $request = Request::create('/learning/academy/groups', 'GET', ['level' => 'unconfigured', 'teacher_id' => 2]);
+        $request->setUserResolver(fn () => $this->actor(1, 3));
+        $view = app(\App\Http\Controllers\Academy\LearnerController::class)->groups($request);
+        $this->assertTrue($view->getData()['filtersReady']); $this->assertSame(1, $view->getData()['groups']->total());
+    }
+
+    public function test_native_teacher_workspace_routes_render_with_auth_and_post_leave_decisions(): void
+    {
+        $directory = sys_get_temp_dir().'/academy-workspace-view-'.uniqid();
+        foreach (['layouts/admin', 'layouts/teacher'] as $path) { mkdir($directory.'/'.$path, 0777, true); file_put_contents($directory.'/'.$path.'/layout.blade.php', '@yield("content")'); }
+        view()->getFinder()->prependLocation($directory);
+        try {
+            $teacher = \App\Models\User::without(['members','children','parents'])->findOrFail(2);
+            $this->actingAs($teacher)->get('/learning/academy/groups')->assertOk()->assertSee('My groups');
+            $this->get('/learning/academy/teacher/leaves')->assertOk()->assertSee('My leave requests');
+            $this->get('/learning/academy/teacher/attendance')->assertOk()->assertSee('My attendance');
+            $this->get('/teacher/changepassword')->assertOk(); $this->get('/teacher/changeavatar')->assertOk();
+            $this->post('/learning/academy/teacher/leaves', ['from_date' => '2026-12-03', 'to_date' => '2026-12-04', 'remarks' => 'Family appointment'])->assertRedirect();
+            $leave = DB::table('teacher_leave_applications')->first(); $this->assertNotNull($leave);
+            $admin = \App\Models\User::without(['members','children','parents'])->findOrFail(1);
+            $this->actingAs($admin)->get('/learning/academy/teacher/leaves')->assertOk()->assertSee('Family appointment');
+            $this->post('/learning/academy/teacher/leaves/'.$leave->id.'/review', ['decision' => 'approved', 'comments' => 'Accepted'])->assertRedirect();
+            $this->actingAs($teacher)->get('/learning/academy/teacher/leaves')->assertOk()->assertSee('Accepted');
+            $this->actingAs($admin)->get('/learning/academy/groups')->assertOk()->assertSee('Select a level and teacher first');
+        } finally {
+            foreach (['layouts/admin', 'layouts/teacher'] as $path) { unlink($directory.'/'.$path.'/layout.blade.php'); rmdir($directory.'/'.$path); }
+            rmdir($directory.'/layouts'); rmdir($directory);
+        }
+    }
+
+    public function test_unlinked_parent_cannot_read_other_students_personal_drive_links(): void
+    {
+        app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1, 3), 7, ['firstname' => 'Other child', 'email' => 'user7@example.test', 'homework_drive_url' => 'https://drive.google.com/drive/folders/private']);
+        $this->actingAs($this->actor(4, 7))->get('/learning/academy/students/7')->assertNotFound()->assertDontSee('folders/private');
+    }
+
+    public function test_demo_preparation_rejects_reserved_email_in_another_academy_without_partial_creation(): void
+    {
+        DB::table('users')->insert(['school_id' => 20, 'usergroup_id' => 7, 'name' => 'Conflicting account', 'email' => config('academy_backend.demo_emails.7')]);
+        $before = DB::table('users')->count();
+        $this->artisan('academy:demo-accounts', ['--school' => 10])->assertExitCode(1);
+        $this->assertSame($before, DB::table('users')->count());
+        $this->assertDatabaseMissing('users', ['email' => config('academy_backend.demo_emails.3')]);
+    }
+
 }
