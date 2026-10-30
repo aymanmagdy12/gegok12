@@ -1228,4 +1228,18 @@ class AcademyBackendTest extends TestCase
         $this->assertFileExists('/tmp/academy-browser.sqlite');
     }
 
+    public function test_array_email_is_validation_error_not_server_error_and_search_shapes_are_rejected(): void
+    {
+        foreach (['register','updateProfile'] as $method) {
+            try {
+                $service=app(\App\Services\AcademyStudents::class);
+                $input=['firstname'=>'Test','email'=>['malformed'],'password'=>'LongSafePassword123!'];
+                if($method==='register') {$service->register($this->actor(1,3),$input);} else {$service->updateProfile($this->actor(1,3),3,$input);}
+                $this->fail('Expected email validation error');
+            } catch(ValidationException $e) { $this->assertArrayHasKey('email',$e->errors()); }
+        }
+        $this->actingAs($this->actor(1,3))->getJson('/learning/academy?q[]=bad')->assertUnprocessable()->assertJsonValidationErrors('q');
+        $this->actingAs($this->actor(2,5))->getJson('/learning/academy/groups/1?cycle[]=bad')->assertUnprocessable()->assertJsonValidationErrors('cycle');
+    }
+
 }

@@ -12,6 +12,7 @@ class GroupLessonController extends Controller
 {
     public function show(Request $request, int $group, AcademyLessons $lessons, ?int $lesson = null)
     {
+        $request->validate(['q' => 'nullable|string|max:200', 'cycle' => 'nullable|integer|min:1', 'assignment' => ['nullable', \Illuminate\Validation\Rule::in(['assigned','unassigned'])]]);
         $actor = $request->user(); $record = $lessons->group($actor, $group);
         $roster = $lessons->roster($actor, $group)->get();
         $summaries = $lessons->summary((int) $actor->school_id, $roster->pluck('id')->all());

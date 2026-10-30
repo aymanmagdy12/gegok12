@@ -29,6 +29,7 @@ class LearnerController extends Controller
     {
         $actor = $request->user();
         if (in_array((int) $actor->usergroup_id, [5,6,7], true)) { return redirect('/learning/academy/dashboard'); }
+        $request->validate(['q' => 'nullable|string|max:200', 'group' => 'nullable|integer|min:1', 'assignment' => ['nullable', Rule::in(['assigned','unassigned'])], 'stage' => ['nullable', Rule::in(['placement','group','completed'])]]);
         $q = $access->students($actor)->leftJoin('userprofiles as p', function ($j) {
             $j->on('p.user_id', '=', 'users.id')->whereNull('p.deleted_at');
         })->leftJoin('academy_student_journeys as j', 'j.student_id', '=', 'users.id')
@@ -82,6 +83,7 @@ class LearnerController extends Controller
 
     public function show(Request $request, int $student, LearningAccess $access, AcademyStudents $students)
     {
+        $request->validate(['cycle' => 'nullable|integer|min:1']);
         $actor = $request->user(); $person = $access->student($actor, $student);
         $journey = $students->journey($actor, $student);
         $profile = DB::table('userprofiles')->where('user_id', $student)->where('school_id', $actor->school_id)->whereNull('deleted_at')->first();

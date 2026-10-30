@@ -117,6 +117,7 @@
 </template>
 
 <script>
+    import DOMPurify from 'dompurify';
 
     export default {
         props:['url' , 'scope' , 'hidecolumns', 'searchquery', 'mode'],
@@ -140,21 +141,21 @@
         {
             getData()
             {
-                axios.get('/'+this.mode+'/notice/show/list/?standardLink_id='+this.currentScope+'&search='+this.search+'&page='+this.page).then(response => {
+                axios.get('/'+this.mode+'/notice/show/list/', {params: {standardLink_id:this.currentScope, search:this.search, page:this.page}}).then(response => {
                     this.notices    = response.data.data;
                     this.page_count     = response.data.meta.last_page;
                     this.total          = response.data.meta.total;
                     //console.log(this.notices);    
                     //console.log(this.hidecolumns);    
                 });
-                axios.get('/'+this.mode+'/notice/list').then(response => {
+                if(this.mode !== 'student') axios.get('/'+this.mode+'/notice/list').then(response => {
                     this.standardLinklist = response.data.standardLinklist;
                 });
             },
 
             trim(string) 
             {
-                return string.substring(0,140) + '...';
+                return DOMPurify.sanitize(String(string ?? '').substring(0,140) + '...');
             },
 
             searchList()

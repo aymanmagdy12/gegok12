@@ -36,6 +36,10 @@ Authentication/logout/reset password; admin registration of student/parent/teach
 
 | 16 | High | `routes/admin.php:notice/delete`, `resources/assets/js/components/noticeboard/List.vue` | Notice deletion is a GET mutation and bypasses CSRF protection. |
 
+| 17 | Medium | `app/Services/AcademyStudents.php:register/updateProfile` | Array-valued email input reaches `trim()` before validation and causes a 500. Search/history filters also accept malformed shapes. |
+| 18 | High | `resources/assets/js/components/noticeboard/List.vue:description` | Legacy notices render stored HTML through `v-html` without sanitizing it. The existing DOMPurify major version is obsolete; update and sanitize this output. |
+| 19 | Medium | `resources/assets/js/components/noticeboard/List.vue:getData` | Concatenated search strings become query parameters; student mode calls a nonexistent notice/list endpoint. |
+
 Potential issues require evidence before changes: large legacy JavaScript bundle, optional addon routes, live URL/proxy configuration, SMTP credentials and real parent-account layout. No assumption that a development-server HTTP 200 proves the public tunnel or authenticated dashboard works.
 
 ## Verification boundaries
