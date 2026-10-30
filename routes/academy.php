@@ -5,6 +5,14 @@ use App\Http\Controllers\Academy\GroupLessonController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth')->prefix('learning/academy')->group(function () {
+    Route::get('/test-accounts', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'testAccounts']);
+    Route::get('/teacher/leaves', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'leaves']);
+    Route::post('/teacher/leaves', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'requestLeave']);
+    Route::post('/teacher/leaves/{leave}/review', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'review'])->whereNumber('leave');
+    Route::post('/teacher/leaves/{leave}/withdraw', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'withdraw'])->whereNumber('leave');
+    Route::get('/teacher/attendance', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'attendance']);
+    Route::post('/teacher/attendance', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'markAttendance']);
+
     Route::get('/', [LearnerController::class, 'index']);
     Route::get('/accounts/new/{type}', [LearnerController::class, 'create']);
     Route::post('/accounts/new/{type}', [LearnerController::class, 'store']);

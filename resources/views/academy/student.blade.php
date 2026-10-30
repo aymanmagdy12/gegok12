@@ -16,6 +16,13 @@
         @if($group->schedule)<p>{{ $group->group_name }}: {{ $group->schedule }}</p>@endif
     @endforeach
 </div>
+<section class="bg-white rounded p-4 my-3">
+    <h2 class="font-semibold text-lg">Learning links</h2>
+    @foreach(['homework_drive_url' => 'Upload homework to Drive', 'recordings_url' => 'Watch lecture recordings', 'report_card_url' => 'Open report cards / progress sheet'] as $field => $label)
+        @if($journey->$field)<p class="my-3"><a class="underline text-purple-700" href="{{ $journey->$field }}" target="_blank" rel="noopener noreferrer">{{ $label }} ↗</a></p>@endif
+    @endforeach
+    @if(!$journey->homework_drive_url && !$journey->recordings_url && !$journey->report_card_url)<p class="my-2">The administrator has not added learning links yet.</p>@endif
+</section>
 @if($role === 3)
 <details class="bg-white rounded p-4 my-3"><summary class="font-semibold cursor-pointer">Edit student details</summary>
     <form method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/details') }}">@csrf
@@ -24,6 +31,7 @@
         @endforeach
         <label class="block my-2">Login email <input type="email" required name="email" class="tw-form-control" value="{{ old('email', $account->email) }}"></label>
         <label class="block my-2">Phone <input name="mobile_no" class="tw-form-control" value="{{ old('mobile_no', $account->mobile_no) }}"></label>
+        @include('academy.student-links-fields')
         <button class="blue-bg text-white px-3 py-2 rounded">Save details</button>
     </form>
 </details>
@@ -52,7 +60,7 @@
     <form class="my-3" method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/parent') }}">@csrf
         <label>Parent <select required name="parent_id" class="tw-form-control"><option value="">Choose existing parent</option>@foreach($parentOptions as $parent)<option value="{{ $parent->id }}">{{ $parent->email }}</option>@endforeach</select></label>
         <button class="blue-bg text-white px-3 py-2 rounded">Link parent</button>
-        <a class="underline mx-2" href="{{ url('/learning/academy/accounts/new/parent') }}">Create parent account</a>
+        @unless(config('academy_backend.test_only'))<a class="underline mx-2" href="{{ url('/learning/academy/accounts/new/parent') }}">Create parent account</a>@endunless
     </form>
     <h2 class="font-semibold text-lg">3. Assign or move group</h2>
     <form class="my-3" method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/group') }}">@csrf
@@ -104,7 +112,7 @@
     @include('academy.lesson-summary', ['summary' => $lessonSummary])
     <p class="my-2">Only statuses recorded by the teacher are counted. These totals cover recorded group lessons; earlier legacy attendance remains below.</p>
     <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-left"><th class="p-2">Lesson</th><th class="p-2">Group</th><th class="p-2">Attendance</th><th class="p-2">Homework</th></tr></thead><tbody>
-    @forelse($lessonRecords as $row)<tr class="border-b"><td class="p-2">{{ $row->lesson_date }} · {{ substr($row->start_time, 0, 5) }} Cairo<br>{{ $row->topic }}</td><td class="p-2">{{ $row->group_name }}</td><td class="p-2">{{ ['pending' => 'Not recorded', 'present' => 'Present', 'absent' => 'Absent', 'excused' => 'Excused'][$row->attendance] }}</td><td class="p-2">{{ ['not_assigned' => 'No homework assigned', 'pending' => 'Awaiting review', 'done' => 'Done', 'missing' => 'Not done'][$row->homework] }}</td></tr>@empty<tr><td colspan="4" class="p-2">No group lessons recorded yet.</td></tr>@endforelse
+    @forelse($lessonRecords as $row)<tr class="border-b"><td class="p-2">{{ $row->lesson_date }} · {{ \App\Support\AcademyClock::time($row->start_time) }} Cairo<br>{{ $row->topic }}</td><td class="p-2">{{ $row->group_name }}</td><td class="p-2">{{ ['pending' => 'Not recorded', 'present' => 'Present', 'absent' => 'Absent', 'excused' => 'Excused'][$row->attendance] }}</td><td class="p-2">{{ ['not_assigned' => 'No homework assigned', 'pending' => 'Awaiting review', 'done' => 'Done', 'missing' => 'Not done'][$row->homework] }}</td></tr>@empty<tr><td colspan="4" class="p-2">No group lessons recorded yet.</td></tr>@endforelse
     </tbody></table></div>
     {{ $lessonRecords->links() }}
 </section>

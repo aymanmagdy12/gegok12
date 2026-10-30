@@ -11,6 +11,7 @@ class LearningAccess
     {
         abort_unless($actor->school_id && in_array((int) $actor->usergroup_id, [3, 5, 6, 7], true), 403);
         $query = DB::table('users')->where('users.school_id', $actor->school_id)->where('users.usergroup_id', 6)->whereNull('users.deleted_at');
+        if (config('academy_backend.test_only')) { $query->where('users.email', config('academy_backend.demo_emails.6')); }
         return match ((int) $actor->usergroup_id) {
             3 => $query,
             6 => $query->where('users.id', $actor->id),

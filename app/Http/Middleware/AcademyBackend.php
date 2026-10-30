@@ -15,6 +15,10 @@ class AcademyBackend
         if (!config('academy_backend.enabled') || !$user || !$user->school_id) {
             return $next($request);
         }
+        if (config('academy_backend.test_only') && !in_array($user->email, config('academy_backend.demo_emails'), true)) {
+            auth()->logout(); $request->session()->invalidate(); $request->session()->regenerateToken();
+            return redirect('/login')->withErrors(['email' => 'Test-only mode is active. Sign in with a prepared academy demo account.']);
+        }
         foreach (config('academy_backend.disabled_paths', []) as $pattern) {
             if (Str::is($pattern, $request->path())) {
                 $message = 'This school administration feature is not used by the academy.';

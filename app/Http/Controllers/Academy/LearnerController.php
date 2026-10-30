@@ -49,6 +49,8 @@ class LearnerController extends Controller
                 $s->where('users.email', 'like', '%'.$search.'%')->orWhere('p.firstname', 'like', '%'.$search.'%')->orWhere('p.lastname', 'like', '%'.$search.'%');
             });
         }
+        if ($request->query('assignment') === 'assigned') { $q->whereNotNull('en.standardLink_id'); }
+        if ($request->query('assignment') === 'unassigned') { $q->whereNull('en.standardLink_id'); }
         if ($request->filled('group')) { $q->where('en.standardLink_id', (int) $request->query('group')); }
         if ($request->query('stage') === 'placement') { $q->where(fn ($s) => $s->whereNull('j.id')->orWhereIn('j.placement_status', ['pending', 'scheduled'])); }
         if ($request->query('stage') === 'group') { $q->whereIn('j.placement_status', ['completed', 'waived'])->whereNull('j.completed_at')->where(fn ($s) => $s->whereNull('en.id')->orWhereNull('current_settings.level')->orWhereColumn('j.level', '!=', 'current_settings.level')); }
@@ -64,12 +66,14 @@ class LearnerController extends Controller
     public function create(Request $request, string $type)
     {
         app(AcademyStudents::class)->admin($request->user());
+        abort_if(config('academy_backend.test_only'), 403, 'Test-only mode uses the four prepared accounts. Disable it to register additional accounts.');
         abort_unless(in_array($type, ['student', 'parent', 'teacher'], true), 404);
         return view('academy.register', ['type' => $type, 'layout' => $this->layout($request->user())]);
     }
 
     public function store(Request $request, string $type, AcademyStudents $students)
     {
+        abort_if(config('academy_backend.test_only'), 403, 'Disable test-only mode to register additional accounts.');
         $roles = ['student' => 6, 'parent' => 7, 'teacher' => 5];
         abort_unless(isset($roles[$type]), 404);
         $id = $students->register($request->user(), $request->all(), $roles[$type]);
@@ -97,7 +101,7 @@ class LearnerController extends Controller
             ->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'u.id')->whereNull('p.deleted_at'); })
             ->where('link.school_id', $actor->school_id)->where('link.student_id', $student)->whereNull('link.deleted_at')->whereNull('u.deleted_at')
             ->get(['u.id', 'u.email', 'p.firstname', 'p.lastname']);
-        $parentOptions = (int) $actor->usergroup_id === 3 ? DB::table('users')->where('school_id', $actor->school_id)->where('usergroup_id', 7)->where('status', 'active')->whereNull('deleted_at')->orderBy('email')->get(['id', 'email']) : collect();
+        $parentOptions = (int) $actor->usergroup_id === 3 ? DB::table('users')->where('school_id', $actor->school_id)->where('usergroup_id', 7)->where('status', 'active')->whereNull('deleted_at')->when(config('academy_backend.test_only'), fn ($q) => $q->where('email', config('academy_backend.demo_emails.7')))->orderBy('email')->get(['id', 'email']) : collect();
         $feedback = DB::table('academy_teacher_feedback as f')->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'f.teacher_id')->whereNull('p.deleted_at'); })
             ->where('f.school_id', $actor->school_id)->where('f.student_id', $student)->orderByDesc('f.id')
             ->paginate(15, ['f.*', 'p.firstname as teacher_name'], 'feedback_page');
@@ -169,17 +173,26 @@ class LearnerController extends Controller
             ->leftJoin('userprofiles as teacher', function ($j) { $j->on('teacher.user_id', '=', 'c.class_teacher_id')->whereNull('teacher.deleted_at'); })
             ->where('c.school_id', $actor->school_id)->where('c.status', 1)->whereNull('c.deleted_at')->whereNull('g.deleted_at')
             ->where('c.academic_year_id', app(AcademyContext::class)->period((int) $actor->school_id)->id);
+        if (config('academy_backend.test_only')) { $query->where('settings.is_demo', 1); }
         if ((int) $actor->usergroup_id === 5) { $query->whereIn('c.id', app(AcademyAssignments::class)->classIds($actor)); }
-        $groups = $query->orderBy('g.group_name')->paginate(25, ['g.id', 'g.group_name', 'g.standardLink_id', 'c.class_teacher_id', 'settings.level', 'settings.schedule', 'settings.meeting_days', 'settings.start_time', 'settings.end_time', 'teacher.firstname as teacher_name']);
+        $filters = $request->validate(['level' => ['nullable', Rule::in(['1','2','3','4','5','6','unconfigured'])], 'teacher_id' => ['nullable', 'integer', Rule::exists('users', 'id')->where('school_id', $actor->school_id)->where('usergroup_id', 5)->whereNull('deleted_at')]]);
+        $filtersReady = (int) $actor->usergroup_id === 5 || (!empty($filters['level']) && !empty($filters['teacher_id']));
+        if (!$filtersReady) { $query->whereRaw('1 = 0'); }
+        if (($filters['level'] ?? '') === 'unconfigured') { $query->whereNull('settings.level'); }
+        elseif (!empty($filters['level'])) { $query->where('settings.level', $filters['level']); }
+        if ((int) $actor->usergroup_id === 3 && !empty($filters['teacher_id'])) { $query->where('c.class_teacher_id', $filters['teacher_id']); }
+        $groups = $query->orderBy('g.group_name')->paginate(25, ['g.id', 'g.group_name', 'g.standardLink_id', 'c.class_teacher_id', 'settings.level', 'settings.schedule', 'settings.meeting_days', 'settings.start_time', 'settings.end_time', 'teacher.firstname as teacher_name'])->withQueryString();
         $teachers = (int) $actor->usergroup_id === 3 ? DB::table('users as u')->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'u.id')->whereNull('p.deleted_at'); })
-            ->where('u.school_id', $actor->school_id)->where('u.usergroup_id', 5)->where('u.status', 'active')->whereNull('u.deleted_at')->orderBy('p.firstname')->get(['u.id', 'u.email', 'p.firstname', 'p.lastname']) : collect();
+            ->where('u.school_id', $actor->school_id)->where('u.usergroup_id', 5)->where('u.status', 'active')->whereNull('u.deleted_at')->when(config('academy_backend.test_only'), fn ($q) => $q->where('u.email', config('academy_backend.demo_emails.5')))->orderBy('p.firstname')->get(['u.id', 'u.email', 'p.firstname', 'p.lastname']) : collect();
         $groupStudents = app(\App\Services\AcademyLessons::class)->rosterPreview($actor, $groups->pluck('id')->all());
-        return view('academy.groups', compact('groups', 'teachers', 'groupStudents') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
+        return view('academy.groups', compact('groups', 'teachers', 'groupStudents', 'filtersReady') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
     }
 
     public function saveGroup(Request $request, ?int $group = null)
     {
         $actor = $request->user(); $students = app(AcademyStudents::class); $students->admin($actor);
+        \App\Support\AcademyClock::normalize($request, 'start_time');
+        \App\Support\AcademyClock::normalize($request, 'end_time');
         $data = $request->validate(['group_name' => 'required|string|max:100', 'level' => 'required|integer|between:1,6',
             'teacher_id' => ['required', Rule::exists('users', 'id')->where('school_id', $actor->school_id)->where('usergroup_id', 5)->where('status', 'active')->whereNull('deleted_at')], 'schedule' => 'nullable|string|max:500',
             'structured_schedule' => 'nullable|boolean', 'meeting_days' => 'required_if:structured_schedule,1|nullable|array|min:1|max:7',
@@ -226,6 +239,7 @@ class LearnerController extends Controller
                 }
             } else { $record = app(AcademyGroups::class)->create((int) $actor->school_id, $data); }
             DB::table('academy_group_settings')->updateOrInsert(['group_id' => $record->id], ['school_id' => $actor->school_id, 'level' => $data['level'], 'schedule' => $data['schedule'] ?? null, 'created_at' => now(), 'updated_at' => now()]);
+            if (config('academy_backend.test_only')) { DB::table('academy_group_settings')->where('group_id', $record->id)->update(['is_demo' => 1]); }
             $calendar = array_intersect_key($data, array_flip(['meeting_days', 'start_time', 'end_time']));
             if (array_key_exists('meeting_days', $calendar)) { $calendar['meeting_days'] = json_encode($calendar['meeting_days'] ?? []); }
             if ($calendar) { DB::table('academy_group_settings')->where('group_id', $record->id)->update($calendar + ['timezone' => 'Africa/Cairo']); }

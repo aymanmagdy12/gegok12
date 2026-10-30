@@ -3,7 +3,7 @@
 <div class="my-4">
     <h1 class="admin-h1 my-3">{{ $role === 7 ? 'My children' : ($role === 6 ? 'My learning' : 'Students & progress') }}</h1>
     @include('academy.messages')
-    @if($role === 3)
+    @if($role === 3 && !config('academy_backend.test_only'))
     <div class="flex flex-wrap my-3">
         @foreach(['student' => 'Add student', 'parent' => 'Add parent', 'teacher' => 'Add teacher'] as $type => $label)
         <a class="custom-green text-white px-4 py-2 mr-2 mb-2 rounded" href="{{ url('/learning/academy/accounts/new/'.$type) }}">{{ $label }}</a>
@@ -19,6 +19,7 @@
             <option value="{{ $value }}" @selected(request('stage') === $value)>{{ $label }}</option>
             @endforeach
         </select></label>
+        <label class="mr-2">Group assignment <select name="assignment" class="tw-form-control"><option value="">All students</option><option value="assigned" @selected(request('assignment') === 'assigned')>Assigned students</option><option value="unassigned" @selected(request('assignment') === 'unassigned')>Unassigned students</option></select></label>
         <button class="blue-bg text-white px-3 py-2 rounded" type="submit">Search</button>
     </form>
     <div class="bg-white rounded overflow-x-auto">
