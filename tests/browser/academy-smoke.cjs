@@ -62,7 +62,7 @@ const assert = require('node:assert/strict');
         await page.getByRole('heading',{name:'إعلان الأكاديمية',exact:true}).waitFor();
         await page.getByText('Literal {{ 7 * 7 }} remains text',{exact:true}).waitFor();
         // Exercise the actual sidebar hit area, including padding, rather than a direct URL.
-        if(width<768) await page.locator('button[onclick*="showsidebar"]').first().click();
+        if(width<768) await page.locator('button[data-academy-menu-toggle]').first().click();
         const menu=page.locator(width<768 ? '#res_sidebar' : '.sidebar .header-wrapper-b');
         const dashboardLink=menu.getByRole('link',{name:'Dashboard',exact:true}).first();
         await dashboardLink.waitFor({state:'visible'});

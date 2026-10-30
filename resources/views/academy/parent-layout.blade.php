@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('base-navigation')
 <nav v-pre class="navbar bg-white w-full flex px-4 lg:px-8 py-2 justify-between items-center">
-    <div class="flex items-center"><button type="button" class="block lg:hidden md:hidden mr-3" onclick="showsidebar('res_sidebar')" aria-label="Open navigation">☰</button><a class="text-xl font-semibold" href="{{ url('/learning/academy/dashboard') }}">Accel Hub Academy</a></div>
+    <div class="flex items-center"><button type="button" class="block lg:hidden md:hidden mr-3" data-academy-menu-toggle aria-controls="res_sidebar" aria-expanded="false" onclick="academyToggleNavigation('res_sidebar')" aria-label="Open navigation">☰</button><a class="text-xl font-semibold" href="{{ url('/learning/academy/dashboard') }}">Accel Hub Academy</a></div>
     <div class="flex items-center"><span class="mx-3">{{ auth()->user()->email }}</span><form method="POST" action="{{ url('/logout') }}">@csrf<button class="px-3 py-2">Logout</button></form></div>
 </nav>
 @endsection
