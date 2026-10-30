@@ -60,6 +60,10 @@ jobs:
           cp .env.example .env
           composer install --prefer-dist --no-interaction --no-progress
           php artisan key:generate
+      - name: Check preview updater syntax
+        run: |
+          bash -n scripts/preview-academy.sh
+          python3 tests/scripts/test_preview_academy.py
       - name: Compile academy Blade templates
         run: |
           php artisan view:cache

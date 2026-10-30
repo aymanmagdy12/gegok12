@@ -24,3 +24,13 @@ Parents see only linked children. Students see only themselves. Neither can edit
 This is source code on GitHub, not an automatic update to a running Codespace. Back up database/uploads; preserve `.env` and the local Codespaces URL fix in `AppServiceProvider`. Stash local changes, fetch and merge this branch, then apply the stash and resolve any provider/dashboard conflicts before continuing. Keep the stash until verified. Run `composer install --no-interaction`, `php artisan migrate --force`, `php artisan config:clear`, `php artisan route:clear`, `php artisan view:clear`. Do not seed again, use `migrate:fresh`, overwrite local built assets or reset the working tree. No npm rebuild is required for these server-rendered forms.
 
 The additive migration creates journey, group metadata, teacher feedback and learning-event tables. It does not rename/delete old classes or fabricate placement history. Group meeting times are free text; automated meeting scheduling/video hosting is not included. Student/parent accounts need real unique login emails. Set a strong initial password and share it privately. Native forms reuse original styling and CSRF protection; no new frontend runtime is required. Live Codespaces performance and browser behavior need a deployment check; automated tests run in isolated SQLite/MySQL databases.
+
+## Try in the current Codespace
+
+From `/var/www`, run:
+
+```bash
+git fetch origin && git show origin/feature/academy-student-journey:scripts/preview-academy.sh | bash
+```
+
+This updater creates/updates local branch `academy-connected`, saves tracked/untracked code changes to a retained stash, applies them to the new code, and stops on conflicts. It then installs dependencies, applies the additive migrations and clears Laravel caches. `.env` and ignored files stay in place. The known URL/dashboard patches from this session were checked for clean three-way merging. Back up your database/uploads before applying changes to real academy data. This script cannot start a stopped Codespace or change forwarded-port visibility. Once it succeeds, open `/learning/academy` on your existing forwarded URL.
