@@ -71,6 +71,25 @@ jobs:
         run: php artisan test --filter=AcademyBackendTest
 
 
+      - name: Export isolated browser database
+        if: matrix.database == 'sqlite'
+        run: ACADEMY_BROWSER_EXPORT=1 php artisan test --filter=test_export_isolated_browser_fixture_when_explicitly_requested_in_ci
+      - name: Run real browser academy smoke flows
+        if: matrix.database == 'sqlite'
+        run: |
+          npm install --prefix /tmp/academy-browser --no-save --no-audit --no-fund playwright@1.56.1
+          /tmp/academy-browser/node_modules/.bin/playwright install --with-deps chromium
+          touch storage/installed
+          DB_DATABASE=/tmp/academy-browser.sqlite SESSION_DRIVER=file CACHE_DRIVER=array APP_URL=http://127.0.0.1:8000 php -S 127.0.0.1:8000 -t public > /tmp/academy-browser-server.log 2>&1 &
+          for attempt in $(seq 1 20); do curl -sf http://127.0.0.1:8000/login > /dev/null && break; sleep 1; done
+          NODE_PATH=/tmp/academy-browser/node_modules node tests/browser/academy-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.database == 'sqlite'
+        with:
+          name: academy-browser-evidence
+          path: tests/browser/artifacts/
+          if-no-files-found: ignore
+
   frontend-build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
