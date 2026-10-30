@@ -124,6 +124,10 @@ class AppServiceProvider extends ServiceProvider {
         }
         //
 
+        \Illuminate\Support\Facades\View::composer('academy.menu', function ($view) {
+            if (auth()->check()) { $view->with('academyNav', app(\App\Services\AcademyNavigation::class)->context(auth()->user(), request())); }
+        });
+
         // Skip database operations if app is not installed yet
         if ( !file_exists( storage_path( 'installed' ) ) || !file_exists( base_path( '.env' ) ) ) {
             return;
@@ -145,5 +149,6 @@ class AppServiceProvider extends ServiceProvider {
     */
     public function register() {
         $this->app->scoped(\App\Services\AcademyContext::class);
+        $this->app->scoped(\App\Services\AcademyNavigation::class);
     }
 }

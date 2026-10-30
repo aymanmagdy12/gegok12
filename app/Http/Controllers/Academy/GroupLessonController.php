@@ -36,7 +36,8 @@ class GroupLessonController extends Controller
                 ->where('current_en.school_id', $actor->school_id)->whereNull('current_en.deleted_at')->orderByDesc('current_en.id')->limit(1)->select('current_section.name'), 'assigned_group');
             $candidates = $candidates->orderBy('p.firstname')->addSelect(['users.id', 'users.email', 'p.firstname', 'p.lastname', 'j.level', 'j.placement_status'])->paginate(25, ['*'], 'students_page')->withQueryString();
         }
-        return view('academy.group', compact('record', 'roster', 'summaries', 'teacher', 'history', 'session', 'marks', 'candidates') + [
+        $checklist = app(\App\Services\AcademyChecklists::class)->group($actor, $group, $request->integer('cycle') ?: null);
+        return view('academy.group', compact('checklist', 'record', 'roster', 'summaries', 'teacher', 'history', 'session', 'marks', 'candidates') + [
             'role' => (int) $actor->usergroup_id, 'layout' => (int) $actor->usergroup_id === 3 ? 'layouts.admin.layout' : 'layouts.teacher.layout']);
     }
 

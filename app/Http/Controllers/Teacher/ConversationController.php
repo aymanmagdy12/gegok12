@@ -20,6 +20,7 @@ class ConversationController extends Controller
 
     public function index(Request $request)
     {
+        if (config('academy_backend.enabled')) { return redirect('/learning/academy/messages'); }
 
        // $conversations=$request->user()->conversations()->orderBy('last_message_at','desc')->get();
     	$conversations=$request->user()->conversations()->get();
@@ -28,6 +29,7 @@ class ConversationController extends Controller
 
     public function show(Conversation $conversation,Request $request)
     {
+        if (config('academy_backend.enabled')) { return redirect('/learning/academy/messages'); }
     	//$conversation = Conversation::where('id',$id)->get();
 
     	$conversations=$request->user()->conversations();
@@ -43,8 +45,10 @@ class ConversationController extends Controller
 
     public function create(Request $request)
     {
+        if (config('academy_backend.enabled')) { return redirect('/learning/academy/messages'); }
         //$conversations=$request->user()->conversations()->orderBy('last_message_at','desc')->get();
         $conversations=$request->user()->conversations()->get();
         return view('teacher.conversations.create',['conversations'=>$conversations]);
     }
 }
+

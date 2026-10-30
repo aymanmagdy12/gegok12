@@ -9,6 +9,8 @@
     @if($record->schedule)<p>{{ $record->schedule }}</p>@endif
 </div>
 @if(!$session)
+@include('academy.group-checklist')
+@if(!$checklist['selected'])
 <section class="bg-white rounded p-4 my-3">
     <h2 class="font-semibold text-lg">Students in this group ({{ $roster->count() }})</h2>
     @forelse($roster as $student)
@@ -19,6 +21,7 @@
     </article>
     @empty<p class="my-2">No students added yet.</p>@endforelse
 </section>
+@endif
 @if($role === 3)
 <section class="bg-white rounded p-4 my-3">
     <h2 class="font-semibold text-lg">Add existing students</h2>
@@ -34,8 +37,9 @@
     <div class="my-3">{{ $candidates->links() }}</div>
 </section>
 @else
-<section class="bg-white rounded p-4 my-3">
-    <h2 class="font-semibold text-lg">Record a lesson</h2>
+<details class="bg-white rounded p-4 my-3"><summary class="cursor-pointer font-semibold">Optional dated lesson register</summary>
+<section class="my-3">
+    <h2 class="font-semibold text-lg">Optional dated lesson register (separate from the eight-session checklist)</h2>
     <form method="POST" action="{{ url('/learning/academy/groups/'.$record->id.'/lessons') }}">@csrf
         <label class="block my-2">Lesson date <input type="date" required name="lesson_date" class="tw-form-control" max="{{ now('Africa/Cairo')->toDateString() }}" value="{{ old('lesson_date', now('Africa/Cairo')->toDateString()) }}"></label>
         <fieldset class="my-3"><legend>Start time (Cairo)</legend>@include('academy.clock-fields', ['prefix' => 'start_time', 'value' => $record->start_time, 'required' => true])</fieldset>
@@ -44,6 +48,7 @@
         <button class="blue-bg text-white px-3 py-2 rounded">Open attendance & homework sheet</button>
     </form>
 </section>
+</details>
 @endif
 @else
 <section class="bg-white rounded p-4 my-3">

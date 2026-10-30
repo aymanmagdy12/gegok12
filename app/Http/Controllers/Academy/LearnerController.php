@@ -28,7 +28,7 @@ class LearnerController extends Controller
     public function index(Request $request, LearningAccess $access)
     {
         $actor = $request->user();
-        if ((int) $actor->usergroup_id === 5) { return redirect('/learning/academy/groups'); }
+        if (in_array((int) $actor->usergroup_id, [5,6,7], true)) { return redirect('/learning/academy/dashboard'); }
         $q = $access->students($actor)->leftJoin('userprofiles as p', function ($j) {
             $j->on('p.user_id', '=', 'users.id')->whereNull('p.deleted_at');
         })->leftJoin('academy_student_journeys as j', 'j.student_id', '=', 'users.id')
@@ -108,6 +108,7 @@ class LearnerController extends Controller
         $events = (int) $actor->usergroup_id === 3 ? DB::table('academy_learning_events')->where('school_id', $actor->school_id)->where('student_id', $student)->orderByDesc('id')->limit(30)->get() : collect();
         $attendance = DB::table('attendances')->where('school_id', $actor->school_id)->where('user_id', $student)->whereNull('deleted_at')->orderByDesc('date')->limit(15)->get(['date', 'session', 'status']);
         $homework = app(\App\Http\Controllers\LearningController::class)->homework($request, $student, $access)->getData(true);
+        $checklistSummary = app(\App\Services\AcademyChecklists::class)->student($actor, $student, $request->integer('cycle') ?: null);
         $teacherMessages = DB::table('academy_student_messages as m')->leftJoin('userprofiles as t', function ($j) { $j->on('t.user_id', '=', 'm.teacher_id')->whereNull('t.deleted_at'); })
             ->where('m.school_id', $actor->school_id)->where('m.student_id', $student)->orderByDesc('m.id')
             ->paginate(15, ['m.message', 'm.created_at', 't.firstname as teacher_name'], 'messages_page');
@@ -115,7 +116,7 @@ class LearnerController extends Controller
         $lessonRecords = DB::table('academy_lesson_students as r')->join('academy_group_lessons as l', 'l.id', '=', 'r.lesson_id')
             ->join('groups as g', 'g.id', '=', 'l.group_id')->where('r.school_id', $actor->school_id)->where('r.student_id', $student)
             ->orderByDesc('l.lesson_date')->orderByDesc('l.start_time')->paginate(20, ['r.attendance', 'r.homework', 'l.lesson_date', 'l.start_time', 'l.topic', 'g.group_name'], 'records_page');
-        return view('academy.student', compact('teacherMessages', 'lessonSummary', 'lessonRecords', 'person', 'profile', 'account', 'journey', 'enrollments', 'groups', 'parents', 'parentOptions', 'feedback', 'events', 'attendance', 'homework') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
+        return view('academy.student', compact('checklistSummary', 'teacherMessages', 'lessonSummary', 'lessonRecords', 'person', 'profile', 'account', 'journey', 'enrollments', 'groups', 'parents', 'parentOptions', 'feedback', 'events', 'attendance', 'homework') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
     }
 
     public function updateProfile(Request $request, int $student, AcademyStudents $students)

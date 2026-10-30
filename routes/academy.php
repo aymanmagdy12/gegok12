@@ -5,6 +5,13 @@ use App\Http\Controllers\Academy\GroupLessonController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth')->prefix('learning/academy')->group(function () {
+    Route::get('/dashboard', [\App\Http\Controllers\Academy\AcademyDashboardController::class, 'index']);
+    Route::get('/messages', [\App\Http\Controllers\Academy\AcademyMessageController::class, 'index']);
+    Route::get('/messages/{student}', [\App\Http\Controllers\Academy\AcademyMessageController::class, 'index'])->whereNumber('student');
+    Route::post('/messages/{student}', [\App\Http\Controllers\Academy\AcademyMessageController::class, 'send'])->whereNumber('student');
+    Route::post('/groups/{group}/checklists', [\App\Http\Controllers\Academy\ChecklistController::class, 'open'])->whereNumber('group');
+    Route::post('/groups/{group}/checklists/{cycle}/students/{student}', [\App\Http\Controllers\Academy\ChecklistController::class, 'save'])->whereNumber(['group','cycle','student']);
+
     Route::get('/test-accounts', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'testAccounts']);
     Route::get('/teacher/leaves', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'leaves']);
     Route::post('/teacher/leaves', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'requestLeave']);
@@ -39,5 +46,5 @@ Route::middleware('auth')->prefix('learning/academy')->group(function () {
 
 Route::get('/parent/dashboard', function () {
     abort_unless((int) auth()->user()->usergroup_id === 7, 403);
-    return redirect('/learning/academy');
+    return redirect('/learning/academy/dashboard');
 })->middleware('auth');

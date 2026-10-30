@@ -2,7 +2,7 @@ name: Academy backend checks
 on:
   pull_request:
   push:
-    branches: ['fix/academy-backend', 'feature/academy-student-journey', 'feature/academy-group-lessons', 'feature/academy-teacher-workspace']
+    branches: ['fix/academy-backend', 'feature/academy-student-journey', 'feature/academy-group-lessons', 'feature/academy-teacher-workspace', 'feature/academy-dashboards-checklists']
   workflow_dispatch:
 permissions:
   contents: read
