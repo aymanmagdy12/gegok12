@@ -56,30 +56,11 @@ class NoticeBoardController extends Controller
      */
     public function showList(Request $request)
     {
-        //
-        $academic_year = SiteHelper::getAcademicYear(Auth::user()->school_id);
-        $notice = NoticeBoard::where([['school_id',Auth::user()->school_id],['academic_year_id',$academic_year->id]])->where('expire_date','>=',date('Y-m-d'))->where('status',1);
-        if(count((array)\Request::getQueryString())>0)
-        {
-            if($request->showExpired == 'true')
-            { 
-                $notice = $notice->orWhere('status',0)->orWhere('expire_date','<=',date('Y-m-d'));
-            }
-
-            if($request->standardLink_id != '')
-            { 
-                $notice = $notice->where('standardLink_id',$request->standardLink_id);
-            }
-
-            if($request->search != '')
-            { 
-                $notice = $notice->where('title','LIKE','%'.$request->search.'%')->orWhere('description','LIKE','%'.$request->search.'%');
-            }
-        }
-        $notice = $notice->paginate(10);
-        $noticelist = NoticeResource::collection($notice);
-        
-        return $noticelist;
+        $data = $request->validate(['search' => 'nullable|string|max:200', 'standardLink_id' => 'nullable|integer|min:1']);
+        $ids = app(\App\Services\AcademyNotices::class)->query($request->user(), trim($data['search'] ?? ''), $request->boolean('showExpired'))->reorder()->select('id');
+        $notices = NoticeBoard::whereIn('id', $ids);
+        if (!empty($data['standardLink_id'])) { $notices->where('standardLink_id', $data['standardLink_id']); }
+        return NoticeResource::collection($notices->orderByDesc('publish_date')->orderByDesc('id')->paginate(10));
     }
 
     /**
@@ -159,10 +140,7 @@ class NoticeBoardController extends Controller
             $notice->description        =   $request->description;
             $notice->status             =   1;
 
-            if($date > $notice->expire_date)
-            {
-                $notice->status=0;
-            }
+            $notice->status = $date > $notice->expire_date ? 0 : 1;
 
             $file = $request->file('attachment_file');
             if($file)
@@ -184,7 +162,7 @@ class NoticeBoardController extends Controller
                 $data['type']           =   'notice';
                // $data['notice_type']    =   'class';
 
-                event(new StandardPushEvent($data));
+                $this->notifyNotice(new StandardPushEvent($data));
 
                 $array = [];
 
@@ -192,7 +170,7 @@ class NoticeBoardController extends Controller
                 $array['standardLink_id']   = $notice->standardLink_id;
                 $array['details']           = trans('notification.notice_add_success_msg');  
 
-                event(new ClassNotificationEvent($array)); 
+                $this->notifyNotice(new ClassNotificationEvent($array)); 
             }
             elseif($request->type == 'school')
             {
@@ -203,14 +181,14 @@ class NoticeBoardController extends Controller
                 $data['type']       =   'notice';
                // $data['notice_type']=   'school';
 
-                event(new PushEvent($data));
+                $this->notifyNotice(new PushEvent($data));
 
                 $array = [];
 
                 $array['school_id'] = Auth::user()->school_id;
                 $array['details'] = trans('notification.notice_add_success_msg');
             
-                event(new SchoolNotificationEvent($array));
+                $this->notifyNotice(new SchoolNotificationEvent($array));
             }
             elseif($request->type == 'teacher')
             {
@@ -220,14 +198,14 @@ class NoticeBoardController extends Controller
                 $data['message']    =   'New Notice Added';
                 $data['type']       =   'notice';
 
-                event(new TeacherPushEvent($data));
+                $this->notifyNotice(new TeacherPushEvent($data));
 
                 $array = [];
 
                 $array['school_id'] = Auth::user()->school_id;
                 $array['details'] = trans('notification.notice_add_success_msg');
             
-                event(new TeacherNotificationEvent($array));
+                $this->notifyNotice(new TeacherNotificationEvent($array));
             }
 
             $message=trans('messages.add_success_msg',['module' => 'Notice']);
@@ -237,7 +215,7 @@ class NoticeBoardController extends Controller
             $this->doActivityLog(
                 $notice,
                 Auth::user(),
-                ['ip' => $ip, 'details' => $_SERVER['HTTP_USER_AGENT'] ],
+                ['ip' => $ip, 'details' => ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown client') ],
                 LOGNAME_ADD_NOTICE,
                 $message
             );
@@ -248,7 +226,7 @@ class NoticeBoardController extends Controller
         }
         catch(Exception $e)
         {
-            //dd($e->getMessage());
+            throw $e; // Laravel reports the exception and returns an error, never a false success.
         }
     }
 
@@ -289,7 +267,7 @@ class NoticeBoardController extends Controller
      */
     public function show($id)
     {
-        $notice = NoticeBoard::where([['id',$id],['school_id',Auth::user()->school_id]])->first();
+        $notice = NoticeBoard::where([['id',$id],['school_id',Auth::user()->school_id]])->firstOrFail();
 
         $backgroundimages=BackgroundImage::where('school_id',Auth::user()->school_id)->latest()->get();
         $backgroundimages=backgroundImagesResource::collection($backgroundimages);
@@ -325,7 +303,7 @@ class NoticeBoardController extends Controller
      */
     public function edit($id)
     {
-        $notice = NoticeBoard::where([['id',$id],['school_id',Auth::user()->school_id]])->first();
+        $notice = NoticeBoard::where([['id',$id],['school_id',Auth::user()->school_id]])->firstOrFail();
         
         if(Gate::allows('notice',$notice))
         {
@@ -350,12 +328,13 @@ class NoticeBoardController extends Controller
         {
             $date=Carbon::now();
             $school_id = Auth::user()->school_id;
-            $notice = NoticeBoard::where('id',$id)->first();
+            $notice = NoticeBoard::where('school_id', Auth::user()->school_id)->where('id', $id)->firstOrFail();
 
             if($request->type == 'class')
             {
                 $notice->standardLink_id    =   $request->standardLink_id;
             }
+            if ($request->type !== 'class') { $notice->standardLink_id = null; }
             $notice->background_id  =   $request->bg_id;
             $notice->type           = $request->type;
             $notice->title          = $request->title;
@@ -375,10 +354,7 @@ class NoticeBoardController extends Controller
                 $notice->attachment_file=$notice->attachment_file; 
             }
 
-            if($date > $notice->expire_date)
-            {
-                $notice->status=0;
-            }
+            $notice->status = $date > $notice->expire_date ? 0 : 1;
             $notice->save();
 
             if($request->type == 'class')
@@ -390,7 +366,7 @@ class NoticeBoardController extends Controller
                 $data['message']        =   'Notice Updated';
                 $data['type']           =   'notice';
 
-                event(new StandardPushEvent($data));
+                $this->notifyNotice(new StandardPushEvent($data));
 
                 $array = [];
 
@@ -398,7 +374,7 @@ class NoticeBoardController extends Controller
                 $array['standardLink_id']   = $notice->standardLink_id;
                 $array['details']           = trans('notification.notice_update_success_msg');  
 
-                event(new ClassNotificationEvent($array)); 
+                $this->notifyNotice(new ClassNotificationEvent($array)); 
             }
             elseif($request->type == 'school')
             {
@@ -408,14 +384,14 @@ class NoticeBoardController extends Controller
                 $data['message']    =   'Notice Updated';
                 $data['type']       =   'notice';
 
-                event(new PushEvent($data));
+                $this->notifyNotice(new PushEvent($data));
 
                 $array = [];
 
                 $array['school_id'] = Auth::user()->school_id;
                 $array['details'] = trans('notification.notice_update_success_msg');
             
-                event(new SchoolNotificationEvent($array));
+                $this->notifyNotice(new SchoolNotificationEvent($array));
             }
             elseif($request->type == 'teacher')
             {
@@ -425,14 +401,14 @@ class NoticeBoardController extends Controller
                 $data['message']    =   'Notice Updated';
                 $data['type']       =   'notice';
 
-                event(new TeacherPushEvent($data));
+                $this->notifyNotice(new TeacherPushEvent($data));
 
                 $array = [];
 
                 $array['school_id'] = Auth::user()->school_id;
                 $array['details'] = trans('notification.notice_update_success_msg');
             
-                event(new TeacherNotificationEvent($array));
+                $this->notifyNotice(new TeacherNotificationEvent($array));
             }
 
             $message=trans('messages.update_success_msg',['module' => 'Notice']);
@@ -440,7 +416,7 @@ class NoticeBoardController extends Controller
             $this->doActivityLog(
                 $notice,
                 Auth::user(),
-                ['ip' => $ip, 'details' => $_SERVER['HTTP_USER_AGENT'] ],
+                ['ip' => $ip, 'details' => ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown client') ],
                 LOGNAME_EDIT_NOTICE,
                 $message
             );
@@ -451,7 +427,7 @@ class NoticeBoardController extends Controller
         }
         catch(Exception $e)
         {
-            //dd($e->getMessage());
+            throw $e; // Laravel reports the exception and returns an error, never a false success.
         }
     }
 
@@ -465,7 +441,7 @@ class NoticeBoardController extends Controller
     {
         try
         {
-            $notice = NoticeBoard::where('id',$id)->first();
+            $notice = NoticeBoard::where('school_id', Auth::user()->school_id)->where('id', $id)->firstOrFail();
             if(Gate::allows('notice',$notice))
             {
                 $notice->delete();
@@ -477,7 +453,7 @@ class NoticeBoardController extends Controller
                 $this->doActivityLog(
                     $notice,
                     Auth::user(),
-                    ['ip' => $ip, 'details' => $_SERVER['HTTP_USER_AGENT'] ],
+                    ['ip' => $ip, 'details' => ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown client') ],
                     LOGNAME_DELETE_NOTICE,
                     $message
                 );
@@ -492,7 +468,13 @@ class NoticeBoardController extends Controller
         }
         catch(Exception $e)
         {
-            //dd($e->getMessage());
+            throw $e; // Laravel reports the exception and returns an error, never a false success.
         }
     }
+    private function notifyNotice(object $event): void
+    {
+        if (config('academy_backend.enabled') && !config('academy_backend.notice_notifications')) { return; }
+        try { event($event); } catch (\Throwable $error) { report($error); }
+    }
+
 }

@@ -80,6 +80,16 @@ class AcademyBackendTest extends TestCase
         (require database_path('migrations/2026_10_30_000002_create_academy_student_journeys.php'))->up();
         (require database_path('migrations/2026_10_30_000003_add_academy_group_lessons.php'))->up();
         Schema::create('settings', function (Blueprint $t) { $t->id(); $t->string('key'); $t->string('value'); $t->timestamps(); });
+        Schema::create('activity_log', function (Blueprint $t) {
+            $t->id(); $t->string('log_name')->nullable(); $t->text('description'); $t->string('subject_type')->nullable(); $t->unsignedBigInteger('subject_id')->nullable();
+            $t->string('causer_type')->nullable(); $t->unsignedBigInteger('causer_id')->nullable(); $t->json('properties')->nullable(); $t->string('event')->nullable(); $t->uuid('batch_uuid')->nullable(); $t->timestamps();
+        });
+        Schema::create('school_details', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('school_id'); $t->string('meta_key'); $t->string('meta_value')->nullable(); $t->timestamps(); $t->softDeletes(); });
+        Schema::create('notice_board', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('standardLink_id')->nullable();
+            $t->string('type'); $t->string('title'); $t->text('description'); $t->string('attachment_file')->nullable(); $t->integer('background_id')->nullable(); $t->dateTime('publish_date')->nullable();
+            $t->dateTime('expire_date')->nullable(); $t->boolean('status')->default(1); $t->softDeletes(); $t->timestamps();
+        });
         Schema::create('homeworks', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('standardLink_id');
             $t->integer('subject_id'); $t->string('description'); $t->date('date'); $t->softDeletes();
@@ -96,6 +106,7 @@ class AcademyBackendTest extends TestCase
             $t->integer('approved_by')->nullable(); $t->date('approved_on')->nullable(); $t->text('comments')->nullable(); $t->timestamps(); $t->softDeletes();
         });
         (require database_path('migrations/2026_10_30_000004_improve_academy_teacher_workspace.php'))->up();
+        (require database_path('migrations/2026_10_30_000005_add_academy_checklists_and_messages.php'))->up();
         foreach ([10, 20, 30] as $id) { DB::table('schools')->insert(['id' => $id, 'name' => 'Academy '.$id]); }
         foreach ([[1,3,10], [2,5,10], [3,6,10], [4,7,10], [5,5,10], [6,6,20], [7,6,10]] as [$id,$role,$school]) {
             DB::table('users')->insert(['id' => $id, 'school_id' => $school, 'usergroup_id' => $role, 'name' => 'Account '.$id, 'email' => 'user'.$id.'@example.test']);
@@ -451,8 +462,8 @@ class AcademyBackendTest extends TestCase
         $view = app(\App\Http\Controllers\Academy\LearnerController::class)->index($request, app(LearningAccess::class));
         $this->assertSame(2, $view->getData()['students']->total());
         $request->setUserResolver(fn () => $this->actor(4, 7));
-        $view = app(\App\Http\Controllers\Academy\LearnerController::class)->index($request, app(LearningAccess::class));
-        $this->assertSame(1, $view->getData()['students']->total());
+        $view = app(\App\Http\Controllers\Academy\AcademyDashboardController::class)->index($request);
+        $this->assertCount(1, $view->getData()['students']);
     }
 
 
@@ -634,7 +645,7 @@ class AcademyBackendTest extends TestCase
     {
         config(['academy_backend.enabled' => true]);
         $response = app(\App\Http\Controllers\Teacher\DashboardController::class)->index(Request::create('/teacher/dashboard'));
-        $this->assertStringEndsWith('/learning/academy/groups', $response->getTargetUrl());
+        $this->assertStringEndsWith('/learning/academy/dashboard', $response->getTargetUrl());
     }
 
 
@@ -890,6 +901,382 @@ class AcademyBackendTest extends TestCase
         $this->artisan('academy:demo-accounts', ['--school' => 10])->assertExitCode(1);
         $this->assertSame($before, DB::table('users')->count());
         $this->assertDatabaseMissing('users', ['email' => config('academy_backend.demo_emails.3')]);
+    }
+
+
+    private function eightMarks(?string $attendance = null, ?string $homework = null): array
+    {
+        $rows = []; foreach (range(1, 8) as $session) { $rows[$session] = ['attendance' => $attendance, 'homework' => $homework]; }
+        return $rows;
+    }
+
+    public function test_eight_session_open_is_idempotent_and_does_not_fabricate_attendance(): void
+    {
+        $service = app(\App\Services\AcademyChecklists::class); $cycle = $service->open($this->actor(2, 5), 1);
+        $this->assertSame($cycle, $service->open($this->actor(2, 5), 1));
+        $this->assertDatabaseCount('academy_checklist_cycles', 1); $this->assertDatabaseCount('academy_checklist_marks', 8);
+        $progress = $service->student($this->actor(4, 7), 3);
+        $this->assertSame(0, $progress['absent']); $this->assertSame(8, $progress['attendance_pending']);
+        $this->assertEquals(0, $progress['homework_percent']);
+    }
+
+    public function test_eight_session_marks_update_parent_and_student_percentages_exactly(): void
+    {
+        $service = app(\App\Services\AcademyChecklists::class); $cycle = $service->open($this->actor(2, 5), 1);
+        $marks = $this->eightMarks();
+        foreach (range(1, 7) as $session) { $marks[$session]['attendance'] = '1'; }
+        $marks[8]['attendance'] = '0'; foreach (range(1, 6) as $session) { $marks[$session]['homework'] = '1'; }
+        $marks[7]['homework'] = '0';
+        $service->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 0, 'marks' => $marks]);
+        foreach ([$this->actor(4, 7), $this->actor(3, 6)] as $actor) {
+            $p = $service->student($actor, 3); $this->assertEquals(87.5, $p['attendance_percent']); $this->assertEquals(75, $p['homework_percent']);
+            $this->assertSame(1, $p['absent']); $this->assertSame(1, $p['homework_pending']);
+        }
+        $this->assertDatabaseHas('academy_learning_events', ['student_id' => 3, 'event' => 'eight_session_checklist_saved']);
+    }
+
+    public function test_clearing_a_checkmark_leaves_it_unrecorded_instead_of_marking_absent(): void
+    {
+        $s = app(\App\Services\AcademyChecklists::class); $cycle = $s->open($this->actor(2, 5), 1);
+        $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 0, 'marks' => $this->eightMarks('1', '1')]);
+        $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 1, 'marks' => $this->eightMarks()]);
+        $p = $s->student($this->actor(4, 7), 3); $this->assertSame(0, $p['absent']); $this->assertSame(8, $p['attendance_pending']); $this->assertEquals(0, $p['homework_percent']);
+    }
+
+    public function test_checklists_reject_stale_tabs_and_sessions_outside_one_through_eight(): void
+    {
+        $s = app(\App\Services\AcademyChecklists::class); $cycle = $s->open($this->actor(2, 5), 1);
+        $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 0, 'marks' => $this->eightMarks('1')]);
+        try { $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 0, 'marks' => $this->eightMarks('0')]); $this->fail('Stale writes must fail.'); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('marks', $e->errors()); }
+        $bad = $this->eightMarks(); unset($bad[8]); $bad[9] = ['attendance' => '1', 'homework' => '1'];
+        $this->expectException(ValidationException::class); $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 1, 'marks' => $bad]);
+    }
+
+    public function test_other_teacher_and_parent_cannot_change_eight_session_marks(): void
+    {
+        $s = app(\App\Services\AcademyChecklists::class); $cycle = $s->open($this->actor(2, 5), 1);
+        foreach ([$this->actor(5, 5), $this->actor(4, 7), $this->actor(3, 6)] as $actor) {
+            try { $s->save($actor, 1, $cycle, 3, ['revision' => 0, 'marks' => $this->eightMarks('1')]); $this->fail('Forbidden update.'); }
+            catch (HttpException $e) { $this->assertContains($e->getStatusCode(), [403, 404]); }
+        }
+        $this->assertSame(8, $s->student($this->actor(4, 7), 3)['attendance_pending']);
+    }
+
+    public function test_next_eight_session_set_preserves_history_and_does_not_advance_level(): void
+    {
+        $s = app(\App\Services\AcademyChecklists::class); $cycle = $s->open($this->actor(2, 5), 1);
+        $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 0, 'marks' => $this->eightMarks('1', '1')]);
+        $next = $s->open($this->actor(2, 5), 1, true, $cycle); $this->assertNotSame($cycle, $next);
+        $this->assertEquals(100, $s->student($this->actor(4, 7), 3, $cycle)['attendance_percent']);
+        $this->assertEquals(0, $s->student($this->actor(4, 7), 3)['attendance_percent']);
+        $this->assertDatabaseCount('academy_checklist_marks', 16);
+        $this->expectException(ValidationException::class); $s->open($this->actor(2, 5), 1, true, $cycle);
+    }
+
+    public function test_parent_can_have_multiple_children_and_navigation_never_exposes_another_child(): void
+    {
+        app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1, 3), 7, 4);
+        app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1, 3), 3, ['firstname' => 'First', 'email' => 'user3@example.test', 'recordings_url' => 'https://drive.google.com/first']);
+        app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1, 3), 7, ['firstname' => 'Second', 'email' => 'user7@example.test', 'recordings_url' => 'https://drive.google.com/second']);
+        $request = Request::create('/learning/academy/dashboard', 'GET', ['student' => 7]);
+        $context = app(\App\Services\AcademyNavigation::class)->context($this->actor(4, 7), $request);
+        $this->assertCount(2, $context['students']); $this->assertNull($context['selected']); $this->assertNull($context['links']);
+        $request = Request::create('/learning/academy/dashboard', 'GET', ['student' => 6]);
+        $context = app(\App\Services\AcademyNavigation::class)->context($this->actor(4, 7), $request); $this->assertCount(2, $context['students']); $this->assertNull($context['selected']);
+    }
+
+    public function test_inactive_parent_link_does_not_grant_child_access(): void
+    {
+        DB::table('student_parent_links')->where('parent_id', 4)->update(['status' => 0]);
+        $this->assertCount(0, app(LearningAccess::class)->students($this->actor(4, 7))->get());
+    }
+
+    public function test_real_teacher_dashboard_has_only_own_groups_and_students(): void
+    {
+        $other = app(AcademyGroups::class)->create(10, ['group_name' => 'Another teachers group', 'level' => 1, 'teacher_id' => 5]);
+        app(AcademyGroups::class)->enroll(10, $other->id, [7]);
+        $request = Request::create('/learning/academy/dashboard'); $request->setUserResolver(fn () => $this->actor(2, 5));
+        $view = app(\App\Http\Controllers\Academy\AcademyDashboardController::class)->index($request);
+        $this->assertCount(1, $view->getData()['groups']); $this->assertSame([3], $view->getData()['students']->pluck('id')->map(fn ($id) => (int) $id)->all());
+    }
+
+    public function test_native_messages_are_shared_only_with_linked_child_and_assigned_staff(): void
+    {
+        $controller = app(\App\Http\Controllers\Academy\AcademyMessageController::class);
+        $request = Request::create('/learning/academy/messages/3', 'POST', ['message' => 'Parent reply about homework']); $request->setUserResolver(fn () => $this->actor(4, 7));
+        $controller->send($request, 3, app(LearningAccess::class));
+        $request = Request::create('/learning/academy/messages/3'); $request->setUserResolver(fn () => $this->actor(2, 5));
+        $view = $controller->index($request, app(LearningAccess::class), 3);
+        $this->assertSame('Parent reply about homework', $view->getData()['messages']->first()->message);
+        $this->assertDatabaseHas('academy_learning_messages', ['student_id' => 3, 'sender_id' => 4]);
+        $request->setUserResolver(fn () => $this->actor(5, 5));
+        $this->expectException(HttpException::class); $controller->index($request, app(LearningAccess::class), 3);
+    }
+
+    public function test_messages_include_existing_teacher_feedback_without_duplication(): void
+    {
+        app(\App\Services\AcademyLessons::class)->message($this->actor(2, 5), 3, ['message' => 'Existing teacher feedback']);
+        $request = Request::create('/learning/academy/messages/3'); $request->setUserResolver(fn () => $this->actor(4, 7));
+        $view = app(\App\Http\Controllers\Academy\AcademyMessageController::class)->index($request, app(LearningAccess::class), 3);
+        $this->assertSame(1, $view->getData()['messages']->total()); $this->assertSame('feedback', $view->getData()['messages']->first()->origin);
+    }
+
+
+    public function test_authenticated_teacher_checklist_and_parent_student_dashboards_work_end_to_end(): void
+    {
+        $dir = sys_get_temp_dir().'/academy-dashboard-view-'.uniqid();
+        foreach (['layouts/teacher', 'layouts/student', 'academy'] as $path) { mkdir($dir.'/'.$path, 0777, true); }
+        foreach (['layouts/teacher/layout', 'layouts/student/layout', 'academy/parent-layout'] as $path) { file_put_contents($dir.'/'.$path.'.blade.php', '@yield("content")'); }
+        view()->getFinder()->prependLocation($dir);
+        try {
+            $teacher = \App\Models\User::without(['members','children','parents'])->findOrFail(2);
+            $this->actingAs($teacher)->get('/teacher/dashboard')->assertRedirect('/learning/academy/dashboard');
+            $this->get('/learning/academy/dashboard')->assertOk()->assertSee('Teacher dashboard')->assertSee('Original group');
+            $this->post('/learning/academy/groups/1/checklists')->assertRedirect();
+            $cycle = DB::table('academy_checklist_cycles')->first()->id;
+            $this->get('/learning/academy/groups/1?cycle='.$cycle)->assertOk()->assertSee('Eight-session attendance')->assertSee("Save this student's eight sessions", false);
+            $marks = $this->eightMarks('1', null); $marks[8]['attendance'] = '0'; foreach (range(1,6) as $i) { $marks[$i]['homework'] = '1'; }
+            $this->post('/learning/academy/groups/1/checklists/'.$cycle.'/students/3', ['revision' => 0, 'marks' => $marks])->assertRedirect();
+            $parent = \App\Models\User::without(['members','children','parents'])->findOrFail(4);
+            $this->actingAs($parent)->get('/parent/dashboard')->assertRedirect('/learning/academy/dashboard');
+            $this->get('/learning/academy/dashboard')->assertOk()->assertSee('Parent dashboard')->assertSee('87.5%', false)->assertSee('75.0%', false);
+            $student = \App\Models\User::without(['members','children','parents'])->findOrFail(3);
+            $this->actingAs($student)->get('/student/dashboard')->assertRedirect('/learning/academy/dashboard');
+            $this->get('/learning/academy/dashboard')->assertOk()->assertSee('Student dashboard')->assertSee('75.0%', false);
+        } finally {
+            foreach (['layouts/teacher/layout', 'layouts/student/layout', 'academy/parent-layout'] as $path) { unlink($dir.'/'.$path.'.blade.php'); }
+            foreach (['layouts/teacher','layouts/student','layouts','academy'] as $path) { rmdir($dir.'/'.$path); } rmdir($dir);
+        }
+    }
+
+    public function test_parent_sidebar_switches_only_between_linked_children_and_empty_parent_is_explicit(): void
+    {
+        app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1, 3), 7, 4);
+        app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1, 3), 3, ['firstname' => 'First child', 'email' => 'user3@example.test', 'recordings_url' => 'https://drive.google.com/first-child']);
+        app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1, 3), 7, ['firstname' => 'Second child', 'email' => 'user7@example.test', 'recordings_url' => 'https://drive.google.com/second-child', 'homework_drive_url' => 'https://drive.google.com/homework-child-two']);
+        Auth::setUser($this->actor(4, 7)); $oldRequest = app('request');
+        try {
+            app()->instance('request', Request::create('/learning/academy/dashboard', 'GET', ['student' => 7]));
+            $html = view('academy.menu')->render();
+            $this->assertStringContainsString('Dashboard', $html); $this->assertStringNotContainsString('Select child', $html);
+            $this->assertStringNotContainsString('https://drive.google.com/second-child', $html);
+            $this->assertStringNotContainsString('https://drive.google.com/first-child', $html);
+            DB::table('student_parent_links')->where('parent_id', 4)->update(['deleted_at' => now()]);
+            app()->instance('request', Request::create('/learning/academy/dashboard'));
+            $html = view('academy.menu')->render(); $this->assertStringContainsString('Dashboard', $html);
+            $this->assertStringNotContainsString('https://drive.google.com/second-child', $html);
+        } finally { app()->instance('request', $oldRequest); }
+    }
+
+    public function test_retired_chat_redirects_and_cannot_create_messages(): void
+    {
+        $this->actingAs($this->actor(4, 7))->get('/learning/academy/messages/3')->assertRedirect('/learning/academy/notices');
+        $this->post('/learning/academy/messages/3', ['message' => 'Do not create this'])->assertStatus(410);
+        $this->assertDatabaseCount('academy_learning_messages', 0);
+    }
+
+    public function test_new_roster_students_get_blank_slots_without_resetting_existing_marks(): void
+    {
+        $s = app(\App\Services\AcademyChecklists::class); $cycle = $s->open($this->actor(2, 5), 1);
+        $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 0, 'marks' => $this->eightMarks('1', '1')]);
+        app(AcademyGroups::class)->enroll(10, 1, [7]); $this->assertSame($cycle, $s->open($this->actor(2, 5), 1));
+        $this->assertDatabaseCount('academy_checklist_marks', 16);
+        $this->assertEquals(100, $s->student($this->actor(3, 6), 3)['attendance_percent']);
+        $this->assertSame(8, $s->student($this->actor(7, 6), 7)['attendance_pending']);
+    }
+
+    public function test_transferred_student_checklist_is_preserved_but_former_teacher_cannot_edit(): void
+    {
+        $s = app(\App\Services\AcademyChecklists::class); $cycle = $s->open($this->actor(2, 5), 1);
+        $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 0, 'marks' => $this->eightMarks('1', '1')]);
+        $group = app(AcademyGroups::class)->create(10, ['group_name' => 'Transferred group', 'level' => 1, 'teacher_id' => 5]);
+        app(AcademyGroups::class)->enroll(10, $group->id, [3]);
+        $this->assertEquals(100, $s->student($this->actor(4, 7), 3, $cycle)['attendance_percent']);
+        $this->expectException(HttpException::class);
+        $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 1, 'marks' => $this->eightMarks('0', '0')]);
+    }
+
+
+    public function test_parent_navigation_ignores_legacy_selection_and_revoked_children_disappear(): void
+    {
+        app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1, 3), 7, 4);
+        $navigation = app(\App\Services\AcademyNavigation::class); $session = app('session.store');
+        $request = Request::create('/learning/academy/dashboard', 'GET', ['student' => 7]); $request->setLaravelSession($session);
+        $this->assertNull($navigation->context($this->actor(4, 7), $request)['selected']);
+        $request = Request::create('/learning/academy/messages'); $request->setLaravelSession($session);
+        $this->assertNull($navigation->context($this->actor(4, 7), $request)['selected']);
+        app(\App\Services\AcademyStudents::class)->unlinkParent($this->actor(1, 3), 7, 4);
+        $request = Request::create('/learning/academy/dashboard'); $request->setLaravelSession($session);
+        $context=$navigation->context($this->actor(4, 7), $request); $this->assertNull($context['selected']); $this->assertSame([3], $context['students']->pluck('id')->map(fn ($id)=>(int) $id)->all());
+    }
+
+    public function test_notices_never_escape_tenant_audience_or_publication_window_even_with_search(): void
+    {
+        $base = ['school_id' => 10, 'academic_year_id' => 10, 'type' => 'school', 'title' => 'Common Arabic إعلان', 'description' => 'search-target', 'status' => 1];
+        DB::table('notice_board')->insert($base);
+        foreach ([['school_id'=>20], ['type'=>'teacher'], ['type'=>'class','standardLink_id'=>999], ['status'=>0], ['publish_date'=>now()->addDay()], ['expire_date'=>now()->subDay()], ['deleted_at'=>now()]] as $override) {
+            DB::table('notice_board')->insert(array_replace($base, $override));
+        }
+        DB::table('notice_board')->insert(array_replace($base, ['type'=>'class','standardLink_id'=>1]));
+        $service = app(\App\Services\AcademyNotices::class);
+        $this->assertCount(2, $service->query($this->actor(4,7), 'search-target', true)->get());
+        $this->assertCount(2, $service->query($this->actor(3,6), 'search-target')->get());
+        $this->assertCount(3, $service->query($this->actor(2,5), 'search-target')->get());
+        DB::table('student_parent_links')->where('parent_id',4)->update(['status'=>0]);
+        $this->assertCount(1, $service->query($this->actor(4,7))->get());
+    }
+
+    public function test_parent_dashboard_shows_all_own_children_links_without_selector_and_escapes_notices(): void
+    {
+        app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1,3),7,4);
+        foreach ([3,7] as $id) {
+            app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1,3),$id,['firstname'=>'Child '.$id,'email'=>'user'.$id.'@example.test','recordings_url'=>'https://drive.google.com/child-'.$id]);
+        }
+        // The real parent layout is rendered here, rather than replacing it with a test stub.
+        $this->actingAs(\App\Models\User::without(['members','children','parents'])->findOrFail(4))->get('/learning/academy/dashboard')->assertOk()
+            ->assertSee('Parent dashboard')->assertSee('https://drive.google.com/child-3',false)->assertSee('https://drive.google.com/child-7',false)
+            ->assertDontSee('Select child')->assertDontSee('name="student"',false)->assertDontSee('Student conversation');
+        DB::table('notice_board')->insert(['school_id'=>10,'academic_year_id'=>10,'type'=>'school','title'=>'<script>alert(1)</script>','description'=>'<img src=x onerror=alert(1)> العربية','status'=>1]);
+        $this->get('/learning/academy/notices')->assertOk()->assertDontSee('<script>alert(1)</script>',false)->assertDontSee('<img src=x',false)->assertSee('العربية');
+        $this->get('/learning/academy/notices?q[]=bad')->assertSessionHasErrors('q');
+        DB::table('student_parent_links')->where('parent_id',4)->update(['status'=>0]);
+        $this->get('/learning/academy/dashboard')->assertOk()->assertSee('No student assigned to you yet.')->assertDontSee('https://drive.google.com/child-3',false);
+    }
+
+    public function test_teacher_menu_requires_no_student_selection_and_past_enrollment_is_not_in_roster(): void
+    {
+        Auth::setUser($this->actor(2,5)); $html = view('academy.menu')->render();
+        $this->assertStringNotContainsString('Selected student',$html);
+        $this->assertStringNotContainsString('/learning/academy/messages',$html);
+        $this->assertStringContainsString('Notice board',$html);
+        DB::table('student_academics')->where('user_id',3)->update(['academic_year_id'=>9]);
+        $this->assertCount(0, app(\App\Services\AcademyLessons::class)->roster($this->actor(2,5),1)->get());
+        $rosters = app(\App\Services\AcademyLessons::class)->rosterPreview($this->actor(2,5),[1]);
+        $this->assertCount(0,$rosters);
+    }
+
+    public function test_cache_clear_is_not_a_public_get_or_a_parent_action(): void
+    {
+        $this->get('/cache-clear')->assertStatus(405);
+        $this->actingAs($this->actor(4,7))->post('/cache-clear')->assertForbidden();
+        $this->actingAs($this->actor(1,3))->post('/cache-clear')->assertNoContent();
+    }
+
+    public function test_registration_accepts_age_four_and_rejects_sixteen_and_profile_uses_same_policy(): void
+    {
+        $service=app(\App\Services\AcademyStudents::class);
+        $id=$service->register($this->actor(1,3),['firstname'=>'طفل','email'=>'four@example.test','password'=>'LongSafePassword123!','date_of_birth'=>now()->subYears(4)->toDateString()]);
+        $this->assertDatabaseHas('userprofiles',['user_id'=>$id,'firstname'=>'طفل']);
+        $this->expectException(ValidationException::class);
+        $service->updateProfile($this->actor(1,3),$id,['firstname'=>'طفل','email'=>'four@example.test','date_of_birth'=>now()->subYears(16)->toDateString()]);
+    }
+
+    public function test_notice_validation_accepts_arabic_and_rejects_foreign_groups_invalid_dates_and_oversize_input(): void
+    {
+        $request=\App\Http\Requests\NoticeRequest::create('/admin/notice/add','POST');
+        $request->setUserResolver(fn ()=>$this->actor(1,3));
+        $valid=['type'=>'class','standardLink_id'=>1,'title'=>'إعلان حصة 8','description'=>'Please bring homework. الواجب','publish_date'=>'2026-10-30 10:00:00','expire_date'=>'2026-10-31 10:00:00'];
+        $this->assertTrue($request->authorize());
+        $this->assertFalse(\Illuminate\Support\Facades\Validator::make($valid,$request->rules())->fails());
+        foreach ([['standardLink_id'=>999],['type'=>'invalid'],['publish_date'=>'not a date'],['expire_date'=>'2026-10-29'],['description'=>str_repeat('a',256)],['title'=>str_repeat('ب',256)]] as $override) {
+            $this->assertTrue(\Illuminate\Support\Facades\Validator::make(array_replace($valid,$override),$request->rules())->fails());
+        }
+        $request->setUserResolver(fn ()=>$this->actor(4,7)); $this->assertFalse($request->authorize());
+    }
+
+    public function test_admin_cannot_update_foreign_academy_notice(): void
+    {
+        $id=DB::table('notice_board')->insertGetId(['school_id'=>20,'academic_year_id'=>20,'type'=>'school','title'=>'Foreign','description'=>'Unchanged','status'=>1]);
+        Auth::setUser($this->actor(1,3));
+        $request=\App\Http\Requests\NoticeUpdateRequest::create('/admin/notice/update/'.$id,'POST',['type'=>'school','title'=>'Changed']);
+        $request->setUserResolver(fn ()=>$this->actor(1,3));
+        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+        app(\App\Http\Controllers\Admin\NoticeBoardController::class)->update($request,$id);
+    }
+
+    public function test_real_teacher_and_student_layouts_render_without_optional_school_logo(): void
+    {
+        foreach ([2=>'Teacher dashboard',3=>'Student dashboard'] as $id=>$heading) {
+            $user=\App\Models\User::without(['members','children','parents'])->findOrFail($id);
+            $this->actingAs($user)->get('/learning/academy/dashboard')->assertOk()->assertSee($heading)->assertSee('Notice board')->assertDontSee('Selected student');
+        }
+    }
+
+    public function test_notice_attachments_are_scoped_and_missing_files_return_not_found(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake();
+        \Illuminate\Support\Facades\Storage::put('notices/demo.pdf','test PDF contents');
+        $base=['school_id'=>10,'academic_year_id'=>10,'type'=>'school','title'=>'Attachment','description'=>'Test','status'=>1,'attachment_file'=>'notices/demo.pdf'];
+        $own=DB::table('notice_board')->insertGetId($base);
+        $foreign=DB::table('notice_board')->insertGetId(array_replace($base,['school_id'=>20]));
+        $this->actingAs($this->actor(4,7))->get('/learning/academy/notices/'.$own.'/attachment')->assertOk()->assertDownload('demo.pdf');
+        $this->get('/learning/academy/notices/'.$foreign.'/attachment')->assertNotFound();
+        \Illuminate\Support\Facades\Storage::delete('notices/demo.pdf');
+        $this->get('/learning/academy/notices/'.$own.'/attachment')->assertNotFound();
+        $this->get('/admin/notice/delete/'.$own)->assertStatus(405);
+    }
+
+    public function test_export_isolated_browser_fixture_when_explicitly_requested_in_ci(): void
+    {
+        if (getenv('CI') !== 'true' || getenv('ACADEMY_BROWSER_EXPORT') !== '1' || config('database.default') !== 'sqlite') {
+            $this->assertTrue(true); return;
+        }
+        foreach ([2,3,4] as $id) { DB::table('users')->where('id',$id)->update(['password'=>\Illuminate\Support\Facades\Hash::make('IsolatedBrowserTest123!')]); }
+        DB::table('settings')->insert(['key'=>'login_status','value'=>'1']);
+        app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1,3),7,4);
+        foreach ([3,7] as $id) { app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1,3),$id,['firstname'=>'Account','lastname'=>(string)$id,'email'=>'user'.$id.'@example.test','recordings_url'=>'https://drive.google.com/fixture-'.$id]); }
+        DB::table('notice_board')->insert(['school_id'=>10,'academic_year_id'=>10,'type'=>'school','title'=>'إعلان الأكاديمية','description'=>'Literal {{ 7 * 7 }} remains text','status'=>1]);
+        if (file_exists('/tmp/academy-browser.sqlite')) { unlink('/tmp/academy-browser.sqlite'); }
+        DB::statement("VACUUM INTO '/tmp/academy-browser.sqlite'");
+        $this->assertFileExists('/tmp/academy-browser.sqlite');
+    }
+
+    public function test_array_email_is_validation_error_not_server_error_and_search_shapes_are_rejected(): void
+    {
+        foreach (['register','updateProfile'] as $method) {
+            try {
+                $service=app(\App\Services\AcademyStudents::class);
+                $input=['firstname'=>'Test','email'=>['malformed'],'password'=>'LongSafePassword123!'];
+                if($method==='register') {$service->register($this->actor(1,3),$input);} else {$service->updateProfile($this->actor(1,3),3,$input);}
+                $this->fail('Expected email validation error');
+            } catch(ValidationException $e) { $this->assertArrayHasKey('email',$e->errors()); }
+        }
+        $this->actingAs($this->actor(1,3))->getJson('/learning/academy?q[]=bad')->assertUnprocessable()->assertJsonValidationErrors('q');
+        $this->actingAs($this->actor(2,5))->getJson('/learning/academy/groups/1?cycle[]=bad')->assertUnprocessable()->assertJsonValidationErrors('cycle');
+    }
+
+    public function test_inactive_group_does_not_appear_as_current_progress_but_history_is_retained(): void
+    {
+        $service=app(\App\Services\AcademyChecklists::class);
+        $cycle=$service->open($this->actor(2,5),1);
+        $service->save($this->actor(2,5),1,$cycle,3,['revision'=>0,'marks'=>$this->eightMarks('1','1')]);
+        DB::table('groups')->where('id',1)->update(['status'=>0]);
+        $this->assertNull($service->student($this->actor(4,7),3)['participant']);
+        $this->assertEquals(100,$service->student($this->actor(4,7),3,$cycle)['attendance_percent']);
+        $this->assertCount(0,app(\App\Services\AcademyLessons::class)->rosterPreview($this->actor(2,5),[1]));
+    }
+
+    public function test_real_login_persists_session_and_audit_without_faking_login_event(): void
+    {
+        config(['queue.default'=>'sync','academy_backend.login_email_notifications'=>false]);
+        DB::table('users')->where('id',2)->update(['password'=>\Illuminate\Support\Facades\Hash::make('IsolatedBrowserTest123!')]);
+        $this->post('/login',['email'=>'user2@example.test','password'=>'IsolatedBrowserTest123!'])->assertRedirect('/learning/academy');
+        $this->assertAuthenticated();
+        $this->assertDatabaseHas('activity_log',['causer_id'=>2,'description'=>'Logged In']);
+    }
+
+    public function test_notice_save_does_not_require_optional_notification_credentials(): void
+    {
+        $admin=\App\Models\User::without(['members','children','parents'])->findOrFail(1); Auth::setUser($admin);
+        config(['academy_backend.notice_notifications'=>false]); $attempts=0;
+        \Illuminate\Support\Facades\Event::listen(\App\Events\PushEvent::class,function () use (&$attempts) { $attempts++; throw new \RuntimeException('Fixture notification delivery failed'); });
+        $data=['type'=>'school','title'=>'إعلان الأكاديمية','description'=>'Notice without SMTP or Firebase','publish_date'=>now()->toDateTimeString(),'expire_date'=>now()->addDay()->toDateTimeString()];
+        $request=\App\Http\Requests\NoticeRequest::create('/admin/notice/add','POST',$data); $request->setUserResolver(fn ()=>$admin);
+        $this->assertFalse(\Illuminate\Support\Facades\Validator::make($data,$request->rules())->fails());
+        $result=app(\App\Http\Controllers\Admin\NoticeBoardController::class)->store($request);
+        $this->assertArrayHasKey('success',$result); $this->assertSame(0,$attempts);
+        $this->assertDatabaseHas('notice_board',['title'=>'إعلان الأكاديمية']);
     }
 
 }

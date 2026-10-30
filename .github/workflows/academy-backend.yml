@@ -2,7 +2,7 @@ name: Academy backend checks
 on:
   pull_request:
   push:
-    branches: ['fix/academy-backend', 'feature/academy-student-journey', 'feature/academy-group-lessons', 'feature/academy-teacher-workspace']
+    branches: ['fix/academy-backend', 'feature/academy-student-journey', 'feature/academy-group-lessons', 'feature/academy-teacher-workspace', 'feature/academy-dashboards-checklists']
   workflow_dispatch:
 permissions:
   contents: read
@@ -70,3 +70,62 @@ jobs:
       - name: Test academy backend
         run: php artisan test --filter=AcademyBackendTest
 
+
+      - name: Export isolated browser database
+        if: matrix.database == 'sqlite'
+        run: ACADEMY_BROWSER_EXPORT=1 php artisan test --filter=test_export_isolated_browser_fixture_when_explicitly_requested_in_ci
+      - uses: actions/setup-node@v4
+        if: matrix.database == 'sqlite'
+        with:
+          node-version: '22'
+      - name: Build current client code for browser preview
+        if: matrix.database == 'sqlite'
+        run: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run production
+      - name: Run real browser academy smoke flows
+        if: matrix.database == 'sqlite'
+        run: |
+          npm install --prefix /tmp/academy-browser --no-save --no-audit --no-fund playwright@1.56.1
+          /tmp/academy-browser/node_modules/.bin/playwright install --with-deps chromium
+          touch storage/installed
+          APP_ENV=local APP_DEBUG=false DB_DATABASE=/tmp/academy-browser.sqlite SESSION_DRIVER=file CACHE_DRIVER=array QUEUE_CONNECTION=sync QUEUE_DRIVER=sync APP_URL=http://127.0.0.1:8000 php -S 127.0.0.1:8000 -t public > /tmp/academy-browser-server.log 2>&1 &
+          for attempt in $(seq 1 20); do curl -sf http://127.0.0.1:8000/login > /dev/null && break; sleep 1; done
+          NODE_PATH=/tmp/academy-browser/node_modules node tests/browser/academy-smoke.cjs
+      - name: Show isolated preview error summaries
+        if: always() && matrix.database == 'sqlite'
+        run: |
+          python3 - <<'PYERROR'
+          from pathlib import Path
+          for path in Path('storage/logs').glob('laravel*.log'):
+              lines = [line.split(' {"exception":')[0] for line in path.read_text(errors='replace').splitlines() if '.ERROR:' in line]
+              for line in lines[-6:]: print(line[:1000])
+          PYERROR
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.database == 'sqlite'
+        with:
+          name: academy-browser-evidence
+          path: tests/browser/artifacts/
+          if-no-files-found: ignore
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install existing Mix toolchain
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Test notice form submission and network errors
+        run: node tests/browser/notice-form.test.cjs
+      - name: Build existing frontend without publishing assets
+        run: |
+          # Diagnostic output only; no change to application styles or compilation rules.
+          echo "require('laravel-mix').webpackConfig({stats: {children: true}});" >> webpack.mix.js
+          npm run production
+      - name: Summarize dependency advisories for review
+        run: |
+          npm audit --json > /tmp/academy-npm-audit.json || true
+          node -e "const r=require('/tmp/academy-npm-audit.json'); console.log(JSON.stringify(r.metadata?.vulnerabilities || r.error || {unavailable:true}));"

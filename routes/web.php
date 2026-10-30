@@ -45,9 +45,11 @@ Route::group(['middleware' => ['siteadmin'], 'namespace' => 'Admin'], function (
 });
 
 
-Route::get('/cache-clear', function () {
+Route::post('/cache-clear', function () {
+    abort_unless((int) auth()->user()->usergroup_id === 3, 403);
     Artisan::call('cache:clear');
-});
+    return response()->noContent();
+})->middleware('auth');
 
 Route::get('/{slug}/standardlist','AdmissionController@list');
 Route::get( '/{slug}/admission-form', 'AdmissionController@create' );

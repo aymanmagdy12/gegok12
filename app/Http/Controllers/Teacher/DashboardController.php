@@ -23,7 +23,7 @@ class DashboardController extends Controller
      */
     public function index(Request $request)
     {
-        if (config('academy_backend.enabled')) { return redirect('/learning/academy/groups'); }
+        if (config('academy_backend.enabled')) { return redirect('/learning/academy/dashboard'); }
         //
         $teacher_id = Auth::id();
         $school_id  = Auth::user()->school_id;

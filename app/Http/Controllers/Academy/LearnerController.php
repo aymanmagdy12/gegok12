@@ -28,7 +28,8 @@ class LearnerController extends Controller
     public function index(Request $request, LearningAccess $access)
     {
         $actor = $request->user();
-        if ((int) $actor->usergroup_id === 5) { return redirect('/learning/academy/groups'); }
+        if (in_array((int) $actor->usergroup_id, [5,6,7], true)) { return redirect('/learning/academy/dashboard'); }
+        $request->validate(['q' => 'nullable|string|max:200', 'group' => 'nullable|integer|min:1', 'assignment' => ['nullable', Rule::in(['assigned','unassigned'])], 'stage' => ['nullable', Rule::in(['placement','group','completed'])]]);
         $q = $access->students($actor)->leftJoin('userprofiles as p', function ($j) {
             $j->on('p.user_id', '=', 'users.id')->whereNull('p.deleted_at');
         })->leftJoin('academy_student_journeys as j', 'j.student_id', '=', 'users.id')
@@ -82,6 +83,7 @@ class LearnerController extends Controller
 
     public function show(Request $request, int $student, LearningAccess $access, AcademyStudents $students)
     {
+        $request->validate(['cycle' => 'nullable|integer|min:1']);
         $actor = $request->user(); $person = $access->student($actor, $student);
         $journey = $students->journey($actor, $student);
         $profile = DB::table('userprofiles')->where('user_id', $student)->where('school_id', $actor->school_id)->whereNull('deleted_at')->first();
@@ -92,7 +94,7 @@ class LearnerController extends Controller
             ->get(['a.id', 'a.standardLink_id', 'a.deleted_at', 'a.created_at', 's.name as group_name', 't.firstname as teacher_name', 'c.class_teacher_id']);
         $groups = DB::table('groups as g')->join('standards_link as c', 'c.id', '=', 'g.standardLink_id')
             ->leftJoin('academy_group_settings as settings', 'settings.group_id', '=', 'g.id')
-            ->where('c.school_id', $actor->school_id)->where('c.status', 1)->whereNull('c.deleted_at')->whereNull('g.deleted_at');
+            ->where('c.school_id', $actor->school_id)->where('c.status', 1)->where('g.status', 1)->whereNull('c.deleted_at')->whereNull('g.deleted_at');
         if ((int) $actor->usergroup_id !== 3) {
             $groups->whereIn('g.standardLink_id', $enrollments->whereNull('deleted_at')->pluck('standardLink_id'));
         }
@@ -108,6 +110,7 @@ class LearnerController extends Controller
         $events = (int) $actor->usergroup_id === 3 ? DB::table('academy_learning_events')->where('school_id', $actor->school_id)->where('student_id', $student)->orderByDesc('id')->limit(30)->get() : collect();
         $attendance = DB::table('attendances')->where('school_id', $actor->school_id)->where('user_id', $student)->whereNull('deleted_at')->orderByDesc('date')->limit(15)->get(['date', 'session', 'status']);
         $homework = app(\App\Http\Controllers\LearningController::class)->homework($request, $student, $access)->getData(true);
+        $checklistSummary = app(\App\Services\AcademyChecklists::class)->student($actor, $student, $request->integer('cycle') ?: null);
         $teacherMessages = DB::table('academy_student_messages as m')->leftJoin('userprofiles as t', function ($j) { $j->on('t.user_id', '=', 'm.teacher_id')->whereNull('t.deleted_at'); })
             ->where('m.school_id', $actor->school_id)->where('m.student_id', $student)->orderByDesc('m.id')
             ->paginate(15, ['m.message', 'm.created_at', 't.firstname as teacher_name'], 'messages_page');
@@ -115,7 +118,7 @@ class LearnerController extends Controller
         $lessonRecords = DB::table('academy_lesson_students as r')->join('academy_group_lessons as l', 'l.id', '=', 'r.lesson_id')
             ->join('groups as g', 'g.id', '=', 'l.group_id')->where('r.school_id', $actor->school_id)->where('r.student_id', $student)
             ->orderByDesc('l.lesson_date')->orderByDesc('l.start_time')->paginate(20, ['r.attendance', 'r.homework', 'l.lesson_date', 'l.start_time', 'l.topic', 'g.group_name'], 'records_page');
-        return view('academy.student', compact('teacherMessages', 'lessonSummary', 'lessonRecords', 'person', 'profile', 'account', 'journey', 'enrollments', 'groups', 'parents', 'parentOptions', 'feedback', 'events', 'attendance', 'homework') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
+        return view('academy.student', compact('checklistSummary', 'teacherMessages', 'lessonSummary', 'lessonRecords', 'person', 'profile', 'account', 'journey', 'enrollments', 'groups', 'parents', 'parentOptions', 'feedback', 'events', 'attendance', 'homework') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
     }
 
     public function updateProfile(Request $request, int $student, AcademyStudents $students)
@@ -171,7 +174,7 @@ class LearnerController extends Controller
         $query = DB::table('groups as g')->join('standards_link as c', 'c.id', '=', 'g.standardLink_id')
             ->leftJoin('academy_group_settings as settings', 'settings.group_id', '=', 'g.id')
             ->leftJoin('userprofiles as teacher', function ($j) { $j->on('teacher.user_id', '=', 'c.class_teacher_id')->whereNull('teacher.deleted_at'); })
-            ->where('c.school_id', $actor->school_id)->where('c.status', 1)->whereNull('c.deleted_at')->whereNull('g.deleted_at')
+            ->where('c.school_id', $actor->school_id)->where('c.status', 1)->where('g.status', 1)->whereNull('c.deleted_at')->whereNull('g.deleted_at')
             ->where('c.academic_year_id', app(AcademyContext::class)->period((int) $actor->school_id)->id);
         if (config('academy_backend.test_only')) { $query->where('settings.is_demo', 1); }
         if ((int) $actor->usergroup_id === 5) { $query->whereIn('c.id', app(AcademyAssignments::class)->classIds($actor)); }

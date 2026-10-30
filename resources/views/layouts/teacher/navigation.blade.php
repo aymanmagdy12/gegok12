@@ -7,16 +7,18 @@
         </span>
       </button>
 
-      @if(Auth::user()->SchoolLogo['meta_value'] != '-')
+      @php($navigationLogo = Auth::user()->SchoolLogo)
+      @php($navigationProfile = Auth::user()->userprofile)
+      @if($navigationLogo && $navigationLogo['meta_value'] != '-')
         <a class="h-10 object-contain" href="{{ route('dashboard') }}">
           <img src="{{ Auth::user()->SchoolLogoPath }}" class="h-10 w-auto object-cover">
         </a>
          <a class="text-lg lg:text-3xl font-exo font-medium text-gray-700 px-4" href="{{ route('dashboard') }}">
-          <strong>{{ ucwords(Auth::user()->school->name) }}</strong>
+          <strong v-pre>{{ ucwords(Auth::user()->school->name) }}</strong>
         </a>
       @else
         <a class="text-xl lg:text-3xl md:text-3xl font-exo font-medium text-gray-600" href="{{ route('dashboard') }}">
-          <strong>{{ ucwords(Auth::user()->school->name) }}</strong>
+          <strong v-pre>{{ ucwords(Auth::user()->school->name) }}</strong>
         </a>
       @endif
     @else
@@ -44,27 +46,27 @@
           <!-- start -->
           <li>
             <div class="profile-click" dusk="profile-menu">
-              @if(Auth::user()->userprofile->avatar!= null)
-                <img src="{{ Auth::user()->userprofile->AvatarPath }}" class="w-8 h-8 rounded-full cursor-pointer">
+              @if($navigationProfile?->avatar!= null)
+                <img src="{{ $navigationProfile?->AvatarPath }}" class="w-8 h-8 rounded-full cursor-pointer">
               @else
                 <img src="{{asset('uploads/user/avatar/default-user.jpg')}}" class="w-8 h-8 rounded-full cursor-pointer">
               @endif
               <div class="user-dtl rounded">
                 <ul class="list-reset">
                   <div class="flex border-b p-2 items-center">
-                    @if(Auth::user()->userprofile->avatar!= null)
-                      <img src="{{ Auth::user()->userprofile->AvatarPath }}" class="w-10 h-10 rounded-full cursor-pointer">
+                    @if($navigationProfile?->avatar!= null)
+                      <img src="{{ $navigationProfile?->AvatarPath }}" class="w-10 h-10 rounded-full cursor-pointer">
                     @else
                       <img src="{{asset('uploads/user/avatar/default-user.jpg')}}" class="w-10 h-10 rounded-full cursor-pointer">
                     @endif
                     <div>
                       <div>
-                        <a id="navbarDropdown" class="nav-link dropdown-toggle text-sm  no-underline text-black px-2" href="{{url('/teacher/dashboard')}}">
-                          {{ Auth::user()->FullName }} <span class="caret"></span>
+                        <a v-pre id="navbarDropdown" class="nav-link dropdown-toggle text-sm  no-underline text-black px-2" href="{{url('/teacher/dashboard')}}">
+                          {{ trim(($navigationProfile?->firstname ?? '').' '.($navigationProfile?->lastname ?? '')) ?: Auth::user()->name }} <span class="caret"></span>
                         </a>
                       </div>
                       <div>
-                        <p class="text-sm  no-underline text-black px-2">{{ Auth::user()->email }}</p>
+                        <p v-pre class="text-sm  no-underline text-black px-2">{{ Auth::user()->email }}</p>
                       </div>
                     </div>
                   </div>

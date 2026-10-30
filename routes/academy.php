@@ -5,6 +5,15 @@ use App\Http\Controllers\Academy\GroupLessonController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth')->prefix('learning/academy')->group(function () {
+    Route::get('/dashboard', [\App\Http\Controllers\Academy\AcademyDashboardController::class, 'index']);
+    Route::get('/notices', [\App\Http\Controllers\Academy\NoticeController::class, 'index']);
+    Route::get('/notices/{notice}/attachment', [\App\Http\Controllers\Academy\NoticeController::class, 'attachment'])->whereNumber('notice');
+    // Retired chat URLs stay predictable; existing records are retained.
+    Route::get('/messages/{student?}', fn () => redirect('/learning/academy/notices'))->whereNumber('student');
+    Route::post('/messages/{student}', fn () => abort(410, 'Direct messages are no longer available. Use the notice board.'))->whereNumber('student');
+    Route::post('/groups/{group}/checklists', [\App\Http\Controllers\Academy\ChecklistController::class, 'open'])->whereNumber('group');
+    Route::post('/groups/{group}/checklists/{cycle}/students/{student}', [\App\Http\Controllers\Academy\ChecklistController::class, 'save'])->whereNumber(['group','cycle','student']);
+
     Route::get('/test-accounts', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'testAccounts']);
     Route::get('/teacher/leaves', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'leaves']);
     Route::post('/teacher/leaves', [\App\Http\Controllers\Academy\TeacherWorkspaceController::class, 'requestLeave']);
@@ -33,11 +42,11 @@ Route::middleware('auth')->prefix('learning/academy')->group(function () {
     Route::post('/students/{student}/parent', [LearnerController::class, 'parent'])->whereNumber('student');
     Route::post('/students/{student}/group', [LearnerController::class, 'assign'])->whereNumber('student');
     Route::post('/students/{student}/feedback', [LearnerController::class, 'feedback'])->whereNumber('student');
-    Route::post('/students/{student}/message', [GroupLessonController::class, 'message'])->whereNumber('student');
+    Route::post('/students/{student}/message', fn () => abort(410, 'Direct messages are no longer available. Use unit feedback or the notice board.'))->whereNumber('student');
     Route::post('/students/{student}/feedback/{feedback}/read', [LearnerController::class, 'readFeedback'])->whereNumber(['student', 'feedback']);
 });
 
 Route::get('/parent/dashboard', function () {
     abort_unless((int) auth()->user()->usergroup_id === 7, 403);
-    return redirect('/learning/academy');
+    return redirect('/learning/academy/dashboard');
 })->middleware('auth');

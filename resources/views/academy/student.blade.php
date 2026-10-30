@@ -2,7 +2,8 @@
 @section('content')
 @php($studentName = trim(($profile->firstname ?? '').' '.($profile->lastname ?? '')) ?: $person->name)
 <h1 class="admin-h1 my-4">{{ $studentName }}</h1>
-<a class="underline" href="{{ url('/learning/academy') }}">Back to students</a>
+<a class="underline" href="{{ url('/learning/academy/dashboard') }}">Back to dashboard</a>
+<section class="bg-white rounded p-4 my-3"><h2 class="font-semibold text-lg">Eight-session progress</h2>@include('academy.checklist-readonly', ['progress' => $checklistSummary])</section>
 @include('academy.messages')
 <div class="bg-white rounded p-4 my-3">
     <h2 class="font-semibold text-lg">Learning record</h2>
@@ -16,7 +17,7 @@
         @if($group->schedule)<p>{{ $group->group_name }}: {{ $group->schedule }}</p>@endif
     @endforeach
 </div>
-<section class="bg-white rounded p-4 my-3">
+<section id="learning-links" class="bg-white rounded p-4 my-3">
     <h2 class="font-semibold text-lg">Learning links</h2>
     @foreach(['homework_drive_url' => 'Upload homework to Drive', 'recordings_url' => 'Watch lecture recordings', 'report_card_url' => 'Open report cards / progress sheet'] as $field => $label)
         @if($journey->$field)<p class="my-3"><a class="underline text-purple-700" href="{{ $journey->$field }}" target="_blank" rel="noopener noreferrer">{{ $label }} ↗</a></p>@endif
@@ -71,16 +72,9 @@
     <p>Complete placement first. Existing groups need a course level set in <a class="underline" href="{{ url('/learning/academy/groups') }}">Groups & teachers</a>.</p>
 </div>
 @endif
-@if($role === 5)
-<form id="teacher-feedback" class="bg-white rounded p-4 my-3" method="POST" action="{{ url('/learning/academy/students/'.$person->id.'/message') }}">
-    @csrf<h2 class="font-semibold text-lg">Send feedback message</h2>
-    <label class="block my-2">Message for student & parent<textarea name="message" required minlength="3" maxlength="5000" class="tw-form-control block w-full">{{ old('message') }}</textarea></label>
-    <button class="custom-green text-white px-3 py-2 rounded">Send feedback message</button>
-</form>
-@endif
-<section class="bg-white rounded p-4 my-3">
-    <h2 class="font-semibold text-lg">Teacher messages</h2>
-    @forelse($teacherMessages as $message)<article class="border-b py-3"><p class="font-semibold">{{ $message->teacher_name ?: 'Teacher' }} · {{ $message->created_at }}</p><p style="white-space: pre-wrap">{{ $message->message }}</p></article>@empty<p class="my-2">No teacher messages yet.</p>@endforelse
+<section id="student-feedback" class="bg-white rounded p-4 my-3">
+    <h2 class="font-semibold text-lg">Previous teacher feedback</h2>
+    @forelse($teacherMessages as $message)<article class="border-b py-3"><p class="font-semibold">{{ $message->teacher_name ?: 'Teacher' }} · {{ $message->created_at }}</p><p style="white-space: pre-wrap">{{ $message->message }}</p></article>@empty<p class="my-2">No previous teacher feedback.</p>@endforelse
     {{ $teacherMessages->links() }}
 </section>
 @if($role === 5 && $journey->level && !$journey->completed_at)

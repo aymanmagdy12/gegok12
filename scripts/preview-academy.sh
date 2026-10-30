@@ -11,7 +11,7 @@ academy_backup=""
 trap 'printf "\nUpdate stopped. Your .env and database were not reset. Code backup stash: %s\nSend the error above before retrying.\n" "${academy_backup:-none needed}"' ERR
 
 git fetch origin
-academy_target="$(git rev-parse refs/remotes/origin/feature/academy-teacher-workspace)"
+academy_target="$(git rev-parse refs/remotes/origin/feature/academy-dashboards-checklists)"
 if [[ -n "$(git status --porcelain)" ]]; then
     git stash push --include-untracked -m "Before connected academy preview $(date -u +%Y%m%dT%H%M%SZ)"
     academy_backup="$(git rev-parse refs/stash)"

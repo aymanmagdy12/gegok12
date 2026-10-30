@@ -22,49 +22,11 @@ class NoticeBoardController extends Controller
 
     public function list(Request $request)
     {
-        //
-        $school_id = Auth::user()->school_id;
-        $academic_year = SiteHelper::getAcademicYear($school_id);
-
-        $standardLinks = StandardLink::where([
-                ['school_id',$school_id],
-                ['academic_year_id',$academic_year->id],
-                ['class_teacher_id',Auth::id()]
-            ])->pluck('id')->toArray();
-
-        $teacherlinks = Teacherlink::where([
-            ['school_id',$school_id],
-            ['academic_year_id',$academic_year->id],
-            ['teacher_id',Auth::id()]
-        ])->pluck('standardLink_id')->toArray();
-
-        $standards = array_merge($standardLinks,$teacherlinks);
-        array_push($standards, null);
-
-        $notices = NoticeBoard::where([['school_id',$school_id],['academic_year_id',$academic_year->id]])->where([['expire_date','>=',date('Y-m-d')],['status',1]])->orWhereIn('standardLink_id',$standards);//check with standards
-
-        if(count((array)\Request::getQueryString())>0)
-        {
-            if($request->showExpired == 'true')
-            { 
-                $notices = $notices->orWhere([['status',0],['expire_date','<=',date('Y-m-d')]]);
-            }
-            if($request->standardLink_id != '')
-            { 
-                $notices = $notices->where('standardLink_id',$request->standardLink_id);
-            }
-
-            if($request->search != '')
-            { 
-                $notices = $notices->where('title','LIKE','%'.$request->search.'%')->orWhere('description','LIKE','%'.$request->search.'%');
-            }
-        }
-
-        $notices = $notices->paginate(10);
-
-        $notices = NoticeResource::collection($notices);
-        
-        return $notices;
+        $data = $request->validate(['search' => 'nullable|string|max:200', 'standardLink_id' => 'nullable|integer|min:1']);
+        $ids = app(\App\Services\AcademyNotices::class)->query($request->user(), trim($data['search'] ?? ''), $request->boolean('showExpired'))->reorder()->select('id');
+        $notices = NoticeBoard::whereIn('id', $ids);
+        if (!empty($data['standardLink_id'])) { $notices->where('standardLink_id', $data['standardLink_id']); }
+        return NoticeResource::collection($notices->orderByDesc('publish_date')->orderByDesc('id')->paginate(10));
     }
 
     /**
@@ -83,7 +45,7 @@ class NoticeBoardController extends Controller
     public function noticelist()
     {
         //
-        $standardLink = StandardLink::with('standard','section')->where('school_id',Auth::user()->school_id)->get();
+        $standardLink = StandardLink::with('standard','section')->where('school_id',Auth::user()->school_id)->whereIn('id', app(\App\Services\AcademyAssignments::class)->classIds(Auth::user()))->get();
         $backgroundimages=BackgroundImage::where('school_id',Auth::user()->school_id)->latest()->get();
         $backgroundimages=backgroundImagesResource::collection($backgroundimages);
         $standardLink = StandardLinkResource::collection($standardLink);
