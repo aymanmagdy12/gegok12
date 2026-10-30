@@ -43,7 +43,7 @@ class AcademyBackendTest extends TestCase
         Schema::create('schools', function (Blueprint $t) { $t->id(); $t->string('name'); $t->boolean('status')->default(1); $t->softDeletes(); });
         Schema::create('users', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('usergroup_id'); $t->string('name');
-            $t->string('email')->nullable(); $t->string('status')->default('active'); $t->string('password')->nullable();
+            $t->string('mobile_no')->nullable(); $t->string('email')->nullable(); $t->string('status')->default('active'); $t->string('password')->nullable();
             $t->unsignedBigInteger('ref_id')->nullable(); $t->string('registration_number')->nullable(); $t->softDeletes(); $t->timestamps();
             $t->rememberToken();
         });
@@ -76,7 +76,8 @@ class AcademyBackendTest extends TestCase
         Schema::create('groups', function (Blueprint $t) { $t->id(); $t->integer('standardLink_id'); $t->string('group_name'); $t->string('type')->default('class'); $t->boolean('status')->default(1); $t->softDeletes(); $t->timestamps(); });
         Schema::create('group_members', function (Blueprint $t) { $t->id(); $t->integer('group_id'); $t->integer('member_id'); $t->string('member_type'); $t->softDeletes(); $t->timestamps(); });
         Schema::create('student_academics', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('user_id'); $t->integer('standardLink_id')->nullable(); $t->softDeletes(); $t->timestamps(); });
-        Schema::create('student_parent_links', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('student_id'); $t->integer('parent_id'); $t->softDeletes(); });
+        Schema::create('student_parent_links', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('student_id'); $t->integer('parent_id'); $t->boolean('status')->default(1); $t->timestamps(); $t->softDeletes(); });
+        (require database_path('migrations/2026_10_30_000002_create_academy_student_journeys.php'))->up();
         Schema::create('settings', function (Blueprint $t) { $t->id(); $t->string('key'); $t->string('value'); $t->timestamps(); });
         Schema::create('homeworks', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('standardLink_id');
@@ -279,7 +280,7 @@ class AcademyBackendTest extends TestCase
         foreach ([1, 2, 3, 4] as $id) {
             DB::table('users')->where('id', $id)->update(['password' => \Illuminate\Support\Facades\Hash::make('correct-password')]);
             $this->post('/login', ['email' => 'user'.$id.'@example.test', 'password' => 'correct-password'])
-                ->assertRedirect('/admin/dashboard');
+                ->assertRedirect('/learning/academy');
             $this->assertSame($id, (int) Auth::id());
             Auth::logout();
         }
@@ -303,4 +304,147 @@ class AcademyBackendTest extends TestCase
         $listener->handle(new \Illuminate\Auth\Events\Login('web', $user, false));
         \Illuminate\Support\Facades\Mail::assertNothingQueued();
     }
+
+    private function prepareJourney(int $level = 1, int $unit = 1): void
+    {
+        app(\App\Services\AcademyStudents::class)->placement($this->actor(1, 3), 3, [
+            'placement_status' => 'completed', 'placement_date' => '2026-10-01', 'level' => $level, 'unit' => $unit,
+        ]);
+        DB::table('academy_group_settings')->insert(['school_id' => 10, 'group_id' => 1, 'level' => $level, 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    public function test_registration_creates_original_login_profile_pending_placement_and_safe_audit(): void
+    {
+        $id = app(\App\Services\AcademyStudents::class)->register($this->actor(1, 3), [
+            'firstname' => 'New', 'lastname' => 'Learner', 'email' => 'new@example.test', 'password' => 'private-initial-password',
+            'date_of_birth' => now()->subYears(9)->toDateString(),
+        ]);
+        $this->assertDatabaseHas('users', ['id' => $id, 'school_id' => 10, 'usergroup_id' => 6, 'status' => 'active']);
+        $this->assertDatabaseHas('userprofiles', ['user_id' => $id, 'firstname' => 'New']);
+        $this->assertDatabaseHas('academy_student_journeys', ['student_id' => $id, 'placement_status' => 'pending', 'level' => null]);
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('private-initial-password', DB::table('users')->where('id', $id)->value('password')));
+        $this->assertStringNotContainsString('private-initial-password', DB::table('academy_learning_events')->value('details'));
+    }
+
+    public function test_teacher_cannot_register_accounts_or_change_placement(): void
+    {
+        $this->expectException(HttpException::class);
+        app(\App\Services\AcademyStudents::class)->placement($this->actor(2, 5), 3, []);
+    }
+
+    public function test_group_assignment_requires_placement_and_matching_level_and_updates_original_enrollment(): void
+    {
+        $service = app(\App\Services\AcademyStudents::class);
+        $group = app(AcademyGroups::class)->create(10, ['group_name' => 'New group', 'teacher_id' => 5, 'level' => 2]);
+        DB::table('academy_group_settings')->insert(['school_id' => 10, 'group_id' => $group->id, 'level' => 2]);
+        try { $service->assign($this->actor(1, 3), 7, $group->id); $this->fail('Placement is required.'); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('group_id', $e->errors()); }
+        $service->placement($this->actor(1, 3), 7, ['placement_status' => 'waived', 'level' => 1, 'unit' => 1]);
+        try { $service->assign($this->actor(1, 3), 7, $group->id); $this->fail('Wrong level must fail.'); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('group_id', $e->errors()); }
+        $service->placement($this->actor(1, 3), 7, ['placement_status' => 'waived', 'level' => 2, 'unit' => 1]);
+        $service->assign($this->actor(1, 3), 7, $group->id);
+        $this->assertDatabaseHas('student_academics', ['user_id' => 7, 'standardLink_id' => $group->standardLink_id, 'deleted_at' => null]);
+        $this->assertDatabaseHas('group_members', ['member_id' => 7, 'group_id' => $group->id, 'deleted_at' => null]);
+        $this->assertDatabaseHas('academy_learning_events', ['student_id' => 7, 'event' => 'group_assigned']);
+    }
+
+    public function test_teacher_class_queries_exclude_unassigned_classes_and_cache_does_not_leak_admin_list(): void
+    {
+        $other = app(AcademyGroups::class)->create(10, ['group_name' => 'Other teacher', 'level' => 2, 'teacher_id' => 5]);
+        \App\Helpers\SiteHelper::getStandardLinkList(10);
+        Auth::setUser($this->actor(2, 5));
+        $this->assertSame([1], \App\Models\StandardLink::orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $list = \App\Helpers\SiteHelper::getStandardLinkList(10);
+        $this->assertCount(1, $list);
+        $this->assertFalse(app(\App\Services\AcademyAssignments::class)->allows($this->actor(2, 5), $other->standardLink_id));
+        $response = app(\App\Http\Controllers\Teacher\GroupController::class)->index(1)->getData(true);
+        $this->assertCount(1, $response['data']);
+    }
+
+    public function test_eager_teacher_relationship_works_without_school_id_on_empty_relation_instance(): void
+    {
+        DB::table('subjects')->insert(['id' => 1, 'school_id' => 10, 'academic_year_id' => 10, 'standard_id' => 1, 'section_id' => 1, 'name' => 'Unit 1', 'type' => 'core']);
+        DB::table('class_teacher_links')->insert(['school_id' => 10, 'academic_year_id' => 10, 'standardLink_id' => 1, 'teacher_id' => 2, 'subject_id' => 1]);
+        $teacher = \App\Models\Users\TeacherUser::without(['members', 'children', 'parents'])
+            ->with(['teacherlinkCurrentAcademicYear' => fn ($q) => $q->without('teacher')])->findOrFail(2);
+        $this->assertCount(1, $teacher->teacherlinkCurrentAcademicYear);
+    }
+
+    public function test_feedback_advances_sequentially_and_repeated_stale_submit_cannot_skip_units(): void
+    {
+        $this->prepareJourney();
+        $service = app(\App\Services\AcademyStudents::class);
+        $data = ['feedback' => 'Great speaking progress.', 'advance' => 1, 'expected_level' => 1, 'expected_unit' => 1];
+        $service->feedback($this->actor(2, 5), 3, $data);
+        $this->assertDatabaseHas('academy_student_journeys', ['student_id' => 3, 'level' => 1, 'unit' => 2]);
+        $this->assertDatabaseHas('academy_teacher_feedback', ['student_id' => 3, 'level' => 1, 'unit' => 1, 'advances' => 1]);
+        try { $service->feedback($this->actor(2, 5), 3, $data); $this->fail('Stale submissions must fail.'); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('feedback', $e->errors()); }
+        $service->feedback($this->actor(2, 5), 3, array_replace($data, ['expected_unit' => 2]));
+        $this->assertDatabaseHas('academy_student_journeys', ['student_id' => 3, 'level' => 2, 'unit' => 1]);
+        try { $service->feedback($this->actor(2, 5), 3, array_replace($data, ['expected_level' => 2])); $this->fail('A new level needs a matching group.'); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('feedback', $e->errors()); }
+        $this->assertDatabaseCount('academy_teacher_feedback', 2);
+    }
+
+    public function test_last_unit_completes_course_without_repeating_or_creating_level_seven(): void
+    {
+        $this->prepareJourney(6, 2);
+        app(\App\Services\AcademyStudents::class)->feedback($this->actor(2, 5), 3, [
+            'feedback' => 'Course completed. Keep practising!', 'advance' => 1, 'expected_level' => 6, 'expected_unit' => 2,
+        ]);
+        $j = DB::table('academy_student_journeys')->where('student_id', 3)->first();
+        $this->assertNotNull($j->completed_at); $this->assertSame(6, (int) $j->level); $this->assertSame(2, (int) $j->unit);
+    }
+
+    public function test_unassigned_teacher_cannot_write_feedback_for_another_group(): void
+    {
+        $this->prepareJourney();
+        $this->expectException(HttpException::class);
+        app(\App\Services\AcademyStudents::class)->feedback($this->actor(5, 5), 3, [
+            'feedback' => 'Unauthorized feedback', 'advance' => 1, 'expected_level' => 1, 'expected_unit' => 1,
+        ]);
+    }
+
+    public function test_parent_linking_is_idempotent_and_cross_academy_links_are_rejected(): void
+    {
+        $service = app(\App\Services\AcademyStudents::class);
+        $service->linkParent($this->actor(1, 3), 7, 4); $service->linkParent($this->actor(1, 3), 7, 4);
+        $this->assertSame(1, DB::table('student_parent_links')->where('student_id', 7)->where('parent_id', 4)->count());
+        $this->assertSame([3, 7], app(LearningAccess::class)->students($this->actor(4, 7))->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $this->expectException(HttpException::class);
+        $service->linkParent($this->actor(1, 3), 6, 4);
+    }
+
+    public function test_parent_feedback_read_is_limited_to_linked_children(): void
+    {
+        $this->prepareJourney();
+        app(\App\Services\AcademyStudents::class)->feedback($this->actor(2, 5), 3, ['feedback' => 'Well done!', 'advance' => 0, 'expected_level' => 1, 'expected_unit' => 1]);
+        $request = Request::create('/learning/academy/students/3/feedback/1/read', 'POST');
+        $request->setUserResolver(fn () => $this->actor(4, 7));
+        app(\App\Http\Controllers\Academy\LearnerController::class)->readFeedback($request, 3, 1, app(LearningAccess::class));
+        $this->assertNotNull(DB::table('academy_teacher_feedback')->where('id', 1)->value('parent_read_at'));
+    }
+
+    public function test_teacher_legacy_detail_guard_blocks_unassigned_student_and_class_urls(): void
+    {
+        $request = Request::create('/teacher/student/show/details/Account%207');
+        $route = new \Illuminate\Routing\Route('GET', 'teacher/student/show/details/{name}', fn () => null);
+        $route->bind($request); $request->setRouteResolver(fn () => $route);
+        $this->expectException(HttpException::class);
+        app(\App\Services\TeacherLearningGuard::class)->check($request, $this->actor(2, 5));
+    }
+
+    public function test_admin_student_list_uses_joined_records_without_ambiguous_columns(): void
+    {
+        $request = Request::create('/learning/academy');
+        $request->setUserResolver(fn () => $this->actor(1, 3));
+        $view = app(\App\Http\Controllers\Academy\LearnerController::class)->index($request, app(LearningAccess::class));
+        $this->assertSame(2, $view->getData()['students']->total());
+        $request->setUserResolver(fn () => $this->actor(4, 7));
+        $view = app(\App\Http\Controllers\Academy\LearnerController::class)->index($request, app(LearningAccess::class));
+        $this->assertSame(1, $view->getData()['students']->total());
+    }
+
 }

@@ -234,6 +234,11 @@ class SiteHelper
     public static function getStandardLinkList($school_id)
     {
         $academic_year = SiteHelper::getAcademicYear($school_id);
+        $actor = auth()->user();
+        if (config('academy_backend.enabled') && $actor && (int) $actor->usergroup_id === 5) {
+            // Assignment lists must not use the administrator's shared cache entry.
+            return StandardLinkResource::collection(StandardLink::with(['standard', 'section', 'teacher'])->orderBy('id')->get());
+        }
         $standardLinkCacheKey = 'standardLink'.$school_id.':'.$academic_year->id;
         return Cache::remember($standardLinkCacheKey, 300, function () use ($school_id, $academic_year) {
             $standards = Standard::where('school_id', $school_id)->active()->orderBy('order')->pluck('id')->toArray();

@@ -1,0 +1,26 @@
+<?php
+
+use App\Http\Controllers\Academy\LearnerController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware('auth')->prefix('learning/academy')->group(function () {
+    Route::get('/', [LearnerController::class, 'index']);
+    Route::get('/accounts/new/{type}', [LearnerController::class, 'create']);
+    Route::post('/accounts/new/{type}', [LearnerController::class, 'store']);
+    Route::get('/groups', [LearnerController::class, 'groups']);
+    Route::post('/groups', [LearnerController::class, 'saveGroup']);
+    Route::post('/groups/{group}', [LearnerController::class, 'saveGroup'])->whereNumber('group');
+    Route::post('/groups/{group}/archive', [LearnerController::class, 'archiveGroup'])->whereNumber('group');
+    Route::get('/activity', [LearnerController::class, 'activity']);
+    Route::get('/students/{student}', [LearnerController::class, 'show'])->whereNumber('student');
+    Route::post('/students/{student}/placement', [LearnerController::class, 'placement'])->whereNumber('student');
+    Route::post('/students/{student}/parent', [LearnerController::class, 'parent'])->whereNumber('student');
+    Route::post('/students/{student}/group', [LearnerController::class, 'assign'])->whereNumber('student');
+    Route::post('/students/{student}/feedback', [LearnerController::class, 'feedback'])->whereNumber('student');
+    Route::post('/students/{student}/feedback/{feedback}/read', [LearnerController::class, 'readFeedback'])->whereNumber(['student', 'feedback']);
+});
+
+Route::get('/parent/dashboard', function () {
+    abort_unless((int) auth()->user()->usergroup_id === 7, 403);
+    return redirect('/learning/academy');
+})->middleware('auth');

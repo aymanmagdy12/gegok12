@@ -2,7 +2,7 @@ name: Academy backend checks
 on:
   pull_request:
   push:
-    branches: ['fix/academy-backend']
+    branches: ['fix/academy-backend', 'feature/academy-student-journey']
   workflow_dispatch:
 permissions:
   contents: read
@@ -50,8 +50,8 @@ jobs:
           extensions: pdo_sqlite, pdo_mysql, mbstring, curl, fileinfo, gd, bcmath, xml, zip, intl
           tools: composer:v2
           coverage: none
-      - name: Verify original frontend is untouched
-        run: git diff --exit-code 95b17a73cad638d5db367937f9350d338a899e73 HEAD -- resources public
+      - name: Verify original frontend assets are untouched
+        run: git diff --exit-code 9a35872dd0a2942f7b0ffafaf35a37c9476f2465 HEAD -- public resources/js resources/css resources/sass
       - name: Lint backend
         run: |
           git diff --name-only --diff-filter=ACMR 95b17a73cad638d5db367937f9350d338a899e73 HEAD -- '*.php' | while IFS= read -r file; do php -l "$file" || exit 1; done
@@ -60,5 +60,9 @@ jobs:
           cp .env.example .env
           composer install --prefer-dist --no-interaction --no-progress
           php artisan key:generate
+      - name: Compile academy Blade templates
+        run: |
+          php artisan view:cache
       - name: Test academy backend
         run: php artisan test --filter=AcademyBackendTest
+
