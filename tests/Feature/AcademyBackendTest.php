@@ -1100,4 +1100,18 @@ class AcademyBackendTest extends TestCase
         $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 1, 'marks' => $this->eightMarks('0', '0')]);
     }
 
+
+    public function test_selected_child_persists_across_pages_and_revoked_links_fall_back_safely(): void
+    {
+        app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1, 3), 7, 4);
+        $navigation = app(\App\Services\AcademyNavigation::class); $session = app('session.store');
+        $request = Request::create('/learning/academy/dashboard', 'GET', ['student' => 7]); $request->setLaravelSession($session);
+        $this->assertSame(7, (int) $navigation->context($this->actor(4, 7), $request)['selected']->id);
+        $request = Request::create('/learning/academy/messages'); $request->setLaravelSession($session);
+        $this->assertSame(7, (int) $navigation->context($this->actor(4, 7), $request)['selected']->id);
+        app(\App\Services\AcademyStudents::class)->unlinkParent($this->actor(1, 3), 7, 4);
+        $request = Request::create('/learning/academy/dashboard'); $request->setLaravelSession($session);
+        $this->assertSame(3, (int) $navigation->context($this->actor(4, 7), $request)['selected']->id);
+    }
+
 }

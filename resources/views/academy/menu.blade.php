@@ -15,6 +15,7 @@
         $academyLinks += ['Eight-session checklists' => '/learning/academy/groups', 'My tasks' => '/teacher/tasks', 'Lesson plans' => '/teacher/lessonplans', 'Calendar' => '/teacher/events', 'My leave requests' => '/learning/academy/teacher/leaves', 'My attendance' => '/learning/academy/teacher/attendance', 'Change password' => '/teacher/changepassword', 'Profile photo' => '/teacher/changeavatar'];
     }
     $nav = $academyNav ?? ['students' => collect(), 'selected' => null, 'links' => null];
+    if ($nav['selected']) { $academyLinks['Messages'] = '/learning/academy/messages/'.$nav['selected']->id; }
 @endphp
 <ul class="list-reset text-sm">
 @foreach($academyLinks as $label => $path)

@@ -14,18 +14,24 @@ class AcademyNavigation
         if (!in_array((int) $actor->usergroup_id, [5, 6, 7], true)) { return ['students' => collect(), 'selected' => null, 'links' => null]; }
         $id = $request->route('student') ?? $request->query('student');
         abort_if($id !== null && (!is_numeric($id) || (int) $id < 1), 404);
-        $key = $actor->school_id.':'.$actor->id.':'.($id ?? 'first').':'.($request->route('group') ?? 'all');
+        $key = $actor->school_id.':'.$actor->id.':'.($id ?? 'auto').':'.($request->route('group') ?? 'all');
         $entries = $this->cache[$request] ?? [];
         if (isset($entries[$key])) { return $entries[$key]; }
+        $explicit = $id !== null;
+        $sessionKey = 'academy.selected_student.'.$actor->school_id.'.'.$actor->id;
+        if (!$explicit && $request->hasSession()) { $id = $request->session()->get($sessionKey); }
         $students = app(LearningAccess::class)->students($actor)->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'users.id')->whereNull('p.deleted_at'); })
             ->orderBy('p.firstname')->get(['users.id', 'users.name', 'p.firstname', 'p.lastname']);
         if ((int) $actor->usergroup_id === 5 && $request->route('group')) {
             $ids = app(AcademyLessons::class)->roster($actor, (int) $request->route('group'))->get()->pluck('id');
             $students = $students->whereIn('id', $ids)->values();
-            if ($id) { abort_unless($students->contains('id', (int) $id), 404); }
+            if ($explicit) { abort_unless($students->contains('id', (int) $id), 404); }
         }
-        if ($id) { app(LearningAccess::class)->student($actor, (int) $id); }
-        $selected = $id ? $students->firstWhere('id', (int) $id) : $students->first();
+        if ($explicit) { app(LearningAccess::class)->student($actor, (int) $id); }
+        $selected = ($id ? $students->firstWhere('id', (int) $id) : null) ?: $students->first();
+        if ($request->hasSession()) {
+            if ($selected) { $request->session()->put($sessionKey, $selected->id); } else { $request->session()->forget($sessionKey); }
+        }
         $links = $selected ? DB::table('academy_student_journeys')->where('school_id', $actor->school_id)->where('student_id', $selected->id)->first(['homework_drive_url', 'recordings_url', 'report_card_url']) : null;
         $entries[$key] = compact('students', 'selected', 'links');
         $this->cache[$request] = $entries;
