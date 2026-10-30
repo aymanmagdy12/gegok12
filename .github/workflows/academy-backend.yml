@@ -80,7 +80,7 @@ jobs:
           npm install --prefix /tmp/academy-browser --no-save --no-audit --no-fund playwright@1.56.1
           /tmp/academy-browser/node_modules/.bin/playwright install --with-deps chromium
           touch storage/installed
-          DB_DATABASE=/tmp/academy-browser.sqlite SESSION_DRIVER=file CACHE_DRIVER=array QUEUE_CONNECTION=sync QUEUE_DRIVER=sync APP_URL=http://127.0.0.1:8000 php -S 127.0.0.1:8000 -t public > /tmp/academy-browser-server.log 2>&1 &
+          APP_ENV=local APP_DEBUG=false DB_DATABASE=/tmp/academy-browser.sqlite SESSION_DRIVER=file CACHE_DRIVER=array QUEUE_CONNECTION=sync QUEUE_DRIVER=sync APP_URL=http://127.0.0.1:8000 php -S 127.0.0.1:8000 -t public > /tmp/academy-browser-server.log 2>&1 &
           for attempt in $(seq 1 20); do curl -sf http://127.0.0.1:8000/login > /dev/null && break; sleep 1; done
           NODE_PATH=/tmp/academy-browser/node_modules node tests/browser/academy-smoke.cjs
       - name: Show isolated preview error summaries

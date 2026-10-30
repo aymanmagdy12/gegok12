@@ -47,6 +47,8 @@ Authentication/logout/reset password; admin registration of student/parent/teach
 
 | 23 | High | `app/Http/Controllers/Admin/NoticeBoardController.php:store/update notifications` | Saving a notice depends on optional external push/notification integrations; delivery errors can return 500 after the notice was already saved. Academy delivery is opt-in and failures are reported independently of notice persistence. |
 
+| 24 | Critical | `app/Http/Kernel.php:global/web middleware order` | Sessions start globally before encrypted cookies are decrypted. Normal browser cookies can be read as invalid session IDs, losing authentication and CSRF state across requests. Move session/impersonation middleware into the web stack after cookie decryption. The browser preview runs with real CSRF protection, not testing-mode bypasses. |
+
 Potential issues require evidence before changes: large legacy JavaScript bundle, optional addon routes, live URL/proxy configuration, SMTP credentials and real parent-account layout. No assumption that a development-server HTTP 200 proves the public tunnel or authenticated dashboard works.
 
 ## Verification boundaries
