@@ -55,6 +55,7 @@ const assert = require('node:assert/strict');
         await page.locator('input[name="q"]').fill('إعلان');
         await page.getByRole('button',{name:'Search',exact:true}).click();
         await page.getByRole('heading',{name:'إعلان الأكاديمية',exact:true}).waitFor();
+        await page.getByText('Literal {{ 7 * 7 }} remains text',{exact:true}).waitFor();
         const wrong=await context.request.get('http://127.0.0.1:8000/learning/academy/not-a-real-page');
         assert.equal(wrong.status(),404);
         row.result='pass';

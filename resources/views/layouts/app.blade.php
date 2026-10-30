@@ -48,7 +48,7 @@
                 <div class="sidebar min-h-full">
                     @yield('base-sidebar')
                 </div>
-                <div class="bg-gray-200 grow w-full px-4" style="width: calc(100vw - 195px);">
+                <div @if(request()->is('learning/academy*')) v-pre @endif class="bg-gray-200 grow w-full px-4" style="width: calc(100vw - 195px);">
                     @yield('base-content')
                 </div>
             </main>
@@ -181,3 +181,4 @@
 }
     </style>
 </html>
+

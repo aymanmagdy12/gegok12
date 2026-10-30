@@ -1226,7 +1226,7 @@ class AcademyBackendTest extends TestCase
         DB::table('settings')->insert(['key'=>'login_status','value'=>'1']);
         app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1,3),7,4);
         foreach ([3,7] as $id) { app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1,3),$id,['firstname'=>'Account','lastname'=>(string)$id,'email'=>'user'.$id.'@example.test','recordings_url'=>'https://drive.google.com/fixture-'.$id]); }
-        DB::table('notice_board')->insert(['school_id'=>10,'academic_year_id'=>10,'type'=>'school','title'=>'إعلان الأكاديمية','description'=>'Fixture notice only.','status'=>1]);
+        DB::table('notice_board')->insert(['school_id'=>10,'academic_year_id'=>10,'type'=>'school','title'=>'إعلان الأكاديمية','description'=>'Literal {{ 7 * 7 }} remains text','status'=>1]);
         if (file_exists('/tmp/academy-browser.sqlite')) { unlink('/tmp/academy-browser.sqlite'); }
         DB::statement("VACUUM INTO '/tmp/academy-browser.sqlite'");
         $this->assertFileExists('/tmp/academy-browser.sqlite');

@@ -51,6 +51,8 @@ Authentication/logout/reset password; admin registration of student/parent/teach
 
 | 25 | Medium | dependency resolution (`package.json`, CI evidence) | An unlocked transitive dependency resolved to missing `tslib-2.9.1.tgz` and broke installation. Pin the known compatible tslib 2.8.1 through an override. |
 
+| 26 | Critical | `resources/assets/js/app.js:rootTemplate`, `resources/views/layouts/app.blade.php` | Vue recompiles server-rendered academy markup, including untrusted text, as a client template. Escaped mustache text can be interpreted as expressions, and native form option state can be reinterpreted. Mark native academy content/navigation with `v-pre`; browser regression verifies literal `{{ 7 * 7 }}` remains literal. No styles/layout/colors are changed. |
+
 Potential issues require evidence before changes: large legacy JavaScript bundle, optional addon routes, live URL/proxy configuration, SMTP credentials and real parent-account layout. No assumption that a development-server HTTP 200 proves the public tunnel or authenticated dashboard works.
 
 ## Verification boundaries

@@ -14,11 +14,11 @@
           <img src="{{ Auth::user()->SchoolLogoPath }}" class="h-10 w-auto object-cover">
         </a>
          <a class="text-lg lg:text-3xl font-exo font-medium text-gray-700 px-4" href="{{ route('dashboard') }}">
-          <strong>{{ ucwords(Auth::user()->school->name) }}</strong>
+          <strong v-pre>{{ ucwords(Auth::user()->school->name) }}</strong>
         </a>
       @else
         <a class="text-xl lg:text-3xl md:text-3xl font-exo font-medium text-gray-600" href="{{ route('dashboard') }}">
-          <strong>{{ ucwords(Auth::user()->school->name) }}</strong>
+          <strong v-pre>{{ ucwords(Auth::user()->school->name) }}</strong>
         </a>
       @endif
     @else
@@ -61,12 +61,12 @@
                     @endif
                     <div>
                       <div>
-                        <a id="navbarDropdown" class="nav-link dropdown-toggle text-sm  no-underline text-black px-2" href="{{url('/student/dashboard')}}">
+                        <a v-pre id="navbarDropdown" class="nav-link dropdown-toggle text-sm  no-underline text-black px-2" href="{{url('/student/dashboard')}}">
                           {{ trim(($navigationProfile?->firstname ?? '').' '.($navigationProfile?->lastname ?? '')) ?: Auth::user()->name }} <span class="caret"></span>
                         </a>
                       </div>
                       <div>
-                        <p class="text-sm no-underline text-black px-2">{{ Auth::user()->email }}</p>
+                        <p v-pre class="text-sm no-underline text-black px-2">{{ Auth::user()->email }}</p>
                       </div>
                     </div>
                   </div>

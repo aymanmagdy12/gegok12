@@ -16,13 +16,13 @@
     $nav = $academyNav ?? ['students' => collect(), 'selected' => null, 'links' => null];
 
 @endphp
-<ul class="list-reset text-sm">
+<ul v-pre class="list-reset text-sm">
 @foreach($academyLinks as $label => $path)
     <li class="py-3 px-3 hover:bg-purple-900 {{ request()->getPathInfo() === $path ? 'active' : '' }}"><a href="{{ url($path) }}" class="flex items-center"><span class="mx-3 whitespace-no-wrap">{{ $label }}</span></a></li>
 @endforeach
 </ul>
 @if($academyRole === 6)
-<div class="border-t border-purple-600 p-3 my-3">
+<div v-pre class="border-t border-purple-600 p-3 my-3">
     @if($nav['students']->isEmpty())
         <p class="text-sm">{{ $academyRole === 7 ? 'No student assigned to you yet.' : 'No students assigned yet.' }}</p>
     @else
