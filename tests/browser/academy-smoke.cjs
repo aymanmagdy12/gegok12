@@ -11,13 +11,13 @@ const assert = require('node:assert/strict');
       for (const [id, role] of [[2,'Teacher'],[4,'Parent'],[3,'Student']]) {
         const context = await browser.newContext({viewport:{width,height:900}});
         const page = await context.newPage();
-        const row = {width,role,consoleErrors:[],pageErrors:[],failedRequests:[]};
+        const row = {width,role,consoleErrors:[],pageErrors:[],failedRequests:[],blockedExternalRequests:[]};
         report.push(row);
         page.on('console', m => {if(m.type()==='error') row.consoleErrors.push(m.text());});
         page.on('pageerror', e => row.pageErrors.push(e.stack || e.message));
         page.on('response', r => {if(r.status()>=400 && r.url().startsWith('http://127.0.0.1:8000')) row.failedRequests.push({url:r.url(),status:r.status()});});
         // External services are not exercised with fixture data.
-        await page.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:8000') ? route.continue() : route.abort());
+        await page.route('**/*', route => { if(route.request().url().startsWith('http://127.0.0.1:8000')) return route.continue(); row.blockedExternalRequests.push(route.request().url()); return route.abort(); });
         await page.goto('http://127.0.0.1:8000/login');
         await page.locator('input[name="email"]').fill(`user${id}@example.test`);
         await page.locator('input[name="password"]').fill('IsolatedBrowserTest123!');
@@ -33,10 +33,18 @@ const assert = require('node:assert/strict');
           await student.locator('summary').click();
           await student.locator('select[name="marks[1][attendance]"]').selectOption('1');
           await student.locator('select[name="marks[1][homework]"]').selectOption('1');
+          assert.equal(await student.locator('select[name="marks[1][attendance]"]').inputValue(),'1');
+          assert.equal(await student.locator('select[name="marks[1][homework]"]').inputValue(),'1');
+          const submission = page.waitForRequest(r => r.method()==='POST' && r.url().includes('/checklists/') && r.url().includes('/students/3'));
           await student.getByRole('button',{name:"Save this student's eight sessions"}).click();
+          const submitted = new URLSearchParams((await submission).postData());
+          row.submittedAttendance = submitted.get('marks[1][attendance]');
+          row.submittedHomework = submitted.get('marks[1][homework]');
+          assert.equal(row.submittedAttendance,'1'); assert.equal(row.submittedHomework,'1');
           await page.getByText('Eight-session attendance and homework saved.',{exact:false}).waitFor();
         } else {
-          await page.getByText('12.5%',{exact:false}).first().waitFor();
+          await page.getByText('Attendance: 1/8',{exact:false}).first().waitFor();
+          await page.getByText('Homework completed: 1/8',{exact:false}).first().waitFor();
           if(role==='Parent') {
             assert.ok(await page.getByRole('link',{name:'Recorded sessions',exact:false}).count()>=2);
           }

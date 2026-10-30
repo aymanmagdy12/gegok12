@@ -49,6 +49,8 @@ Authentication/logout/reset password; admin registration of student/parent/teach
 
 | 24 | Critical | `app/Http/Kernel.php:global/web middleware order` | Sessions start globally before encrypted cookies are decrypted. Normal browser cookies can be read as invalid session IDs, losing authentication and CSRF state across requests. Move session/impersonation middleware into the web stack after cookie decryption. The browser preview runs with real CSRF protection, not testing-mode bypasses. |
 
+| 25 | Medium | dependency resolution (`package.json`, CI evidence) | An unlocked transitive dependency resolved to missing `tslib-2.9.1.tgz` and broke installation. Pin the known compatible tslib 2.8.1 through an override. |
+
 Potential issues require evidence before changes: large legacy JavaScript bundle, optional addon routes, live URL/proxy configuration, SMTP credentials and real parent-account layout. No assumption that a development-server HTTP 200 proves the public tunnel or authenticated dashboard works.
 
 ## Verification boundaries

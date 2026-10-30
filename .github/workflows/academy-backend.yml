@@ -74,6 +74,15 @@ jobs:
       - name: Export isolated browser database
         if: matrix.database == 'sqlite'
         run: ACADEMY_BROWSER_EXPORT=1 php artisan test --filter=test_export_isolated_browser_fixture_when_explicitly_requested_in_ci
+      - uses: actions/setup-node@v4
+        if: matrix.database == 'sqlite'
+        with:
+          node-version: '22'
+      - name: Build current client code for browser preview
+        if: matrix.database == 'sqlite'
+        run: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run production
       - name: Run real browser academy smoke flows
         if: matrix.database == 'sqlite'
         run: |
