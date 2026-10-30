@@ -700,4 +700,12 @@ class AcademyBackendTest extends TestCase
         app(\App\Http\Controllers\Academy\LearnerController::class)->saveGroup($request, 1);
     }
 
+
+    public function test_stale_teacher_assignment_from_a_different_period_does_not_grant_child_access(): void
+    {
+        DB::table('class_teacher_links')->insert(['school_id' => 10, 'academic_year_id' => 20, 'standardLink_id' => 1, 'teacher_id' => 5, 'subject_id' => 1]);
+        $this->assertFalse(app(LearningAccess::class)->students($this->actor(5, 5))->where('users.id', 3)->exists());
+        $this->assertFalse(app(\App\Services\AcademyAssignments::class)->allows($this->actor(5, 5), 1));
+    }
+
 }
