@@ -1078,4 +1078,26 @@ class AcademyBackendTest extends TestCase
         }
     }
 
+
+    public function test_new_roster_students_get_blank_slots_without_resetting_existing_marks(): void
+    {
+        $s = app(\App\Services\AcademyChecklists::class); $cycle = $s->open($this->actor(2, 5), 1);
+        $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 0, 'marks' => $this->eightMarks('1', '1')]);
+        app(AcademyGroups::class)->enroll(10, 1, [7]); $this->assertSame($cycle, $s->open($this->actor(2, 5), 1));
+        $this->assertDatabaseCount('academy_checklist_marks', 16);
+        $this->assertEquals(100, $s->student($this->actor(3, 6), 3)['attendance_percent']);
+        $this->assertSame(8, $s->student($this->actor(7, 6), 7)['attendance_pending']);
+    }
+
+    public function test_transferred_student_checklist_is_preserved_but_former_teacher_cannot_edit(): void
+    {
+        $s = app(\App\Services\AcademyChecklists::class); $cycle = $s->open($this->actor(2, 5), 1);
+        $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 0, 'marks' => $this->eightMarks('1', '1')]);
+        $group = app(AcademyGroups::class)->create(10, ['group_name' => 'Transferred group', 'level' => 1, 'teacher_id' => 5]);
+        app(AcademyGroups::class)->enroll(10, $group->id, [3]);
+        $this->assertEquals(100, $s->student($this->actor(4, 7), 3, $cycle)['attendance_percent']);
+        $this->expectException(HttpException::class);
+        $s->save($this->actor(2, 5), 1, $cycle, 3, ['revision' => 1, 'marks' => $this->eightMarks('0', '0')]);
+    }
+
 }

@@ -13,7 +13,7 @@ class AcademyChecklists
     {
         abort_unless((int) $actor->usergroup_id === 5, 403);
         app(AcademyLessons::class)->group($actor, $group);
-        return DB::transaction(function () use ($actor, $group, $next) {
+        return DB::transaction(function () use ($actor, $group, $next, $previous) {
             DB::table('groups')->where('id', $group)->lockForUpdate()->first();
             $roster = app(AcademyLessons::class)->roster($actor, $group)->get();
             if ($roster->isEmpty()) { throw ValidationException::withMessages(['group' => 'Add students to the group before opening its checklist.']); }
