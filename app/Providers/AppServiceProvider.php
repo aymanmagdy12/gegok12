@@ -89,6 +89,12 @@ class AppServiceProvider extends ServiceProvider {
             }
         });
 
+        foreach ([\App\Models\StandardLink::class => 'id', \App\Models\StudentAcademic::class => 'standardLink_id',
+            \App\Models\Homework::class => 'standardLink_id', \App\Models\Assignment::class => 'standardLink_id',
+            \App\Models\Teacherlink::class => 'standardLink_id'] as $model => $column) {
+            $model::addGlobalScope(new \App\Models\Scopes\AcademyTeacherScope($column));
+        }
+
         Events::observe( EventObserver::class );
         Bulletin::observe( BulletinObserver::class );
         Homework::observe( HomeworkObserver::class );

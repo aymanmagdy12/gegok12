@@ -62,3 +62,6 @@ Route::post( '/{slug}/admission-form/validationStudentDetail', 'AdmissionControl
 Route::post( '/{slug}/admission-form/validationAcademicDetail', 'AdmissionController@validationAcademicDetail' );
 Route::post( '/{slug}/admission-form/validationParentDetail', 'AdmissionController@validationParentDetail' );
 Route::post( '/{slug}/admission-form/validationPersonalDetail', 'AdmissionController@validationPersonalDetail' );
+
+// The academy workflow reuses existing users, classrooms and learning records.
+require __DIR__.'/academy.php';

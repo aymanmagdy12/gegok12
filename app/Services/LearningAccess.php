@@ -10,13 +10,13 @@ class LearningAccess
     public function students(object $actor)
     {
         abort_unless($actor->school_id && in_array((int) $actor->usergroup_id, [3, 5, 6, 7], true), 403);
-        $query = DB::table('users')->where('school_id', $actor->school_id)->where('usergroup_id', 6)->whereNull('deleted_at');
+        $query = DB::table('users')->where('users.school_id', $actor->school_id)->where('users.usergroup_id', 6)->whereNull('users.deleted_at');
         return match ((int) $actor->usergroup_id) {
             3 => $query,
-            6 => $query->where('id', $actor->id),
-            7 => $query->whereIn('id', DB::table('student_parent_links')->select('student_id')
+            6 => $query->where('users.id', $actor->id),
+            7 => $query->whereIn('users.id', DB::table('student_parent_links')->select('student_id')
                 ->where('school_id', $actor->school_id)->where('parent_id', $actor->id)->whereNull('deleted_at')),
-            5 => $query->whereIn('id', DB::table('student_academics as a')->select('a.user_id')
+            5 => $query->whereIn('users.id', DB::table('student_academics as a')->select('a.user_id')
                 ->join('standards_link as g', 'g.id', '=', 'a.standardLink_id')
                 ->where('a.school_id', $actor->school_id)->where('g.school_id', $actor->school_id)
                 ->where('a.academic_year_id', app(AcademyContext::class)->period((int) $actor->school_id)->id)

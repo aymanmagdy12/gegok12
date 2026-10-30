@@ -280,17 +280,20 @@ trait Dashboard
     {
         $array = [];
 
+        $academic_year = SiteHelper::getAcademicYear($school_id);
         $teacher = TeacherUser::without(['members', 'children', 'parents'])->where('school_id', $school_id)
-            ->with(['teacherlinkCurrentAcademicYear' => fn ($query) => $query->without('teacher')->with(['subject', 'standardLink'])])
             ->findOrFail($teacher_id);
-        $academic_year  = SiteHelper::getAcademicYear($school_id);
-        $teacherlinks   = $teacher->teacherlinkCurrentAcademicYear;
+        $teacherlinks = $teacher->teacherlink()
+            ->where('academic_year_id', $academic_year->id)
+            ->without('teacher')
+            ->with(['subject', 'standardLink'])
+            ->get();
 
         $teachersubjects = [];
         foreach ($teacherlinks as $teacherlink) 
         {
-            $teachersubjects[$teacherlink->id]['subject']   = $teacherlink->subject->name;
-            $teachersubjects[$teacherlink->id]['class']     = $teacherlink->standardLink->StandardSection;
+            $teachersubjects[$teacherlink->id]['subject']   = $teacherlink->subject?->name ?? 'English';
+            $teachersubjects[$teacherlink->id]['class']     = $teacherlink->standardLink?->StandardSection ?? 'Archived group';
         }
         $standardLinks = $teacherlinks->pluck('standardLink_id')->toArray();
 
