@@ -6,9 +6,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth')->prefix('learning/academy')->group(function () {
     Route::get('/dashboard', [\App\Http\Controllers\Academy\AcademyDashboardController::class, 'index']);
-    Route::get('/messages', [\App\Http\Controllers\Academy\AcademyMessageController::class, 'index']);
-    Route::get('/messages/{student}', [\App\Http\Controllers\Academy\AcademyMessageController::class, 'index'])->whereNumber('student');
-    Route::post('/messages/{student}', [\App\Http\Controllers\Academy\AcademyMessageController::class, 'send'])->whereNumber('student');
+    Route::get('/notices', [\App\Http\Controllers\Academy\NoticeController::class, 'index']);
+    // Retired chat URLs stay predictable; existing records are retained.
+    Route::get('/messages/{student?}', fn () => redirect('/learning/academy/notices'))->whereNumber('student');
+    Route::post('/messages/{student}', fn () => abort(410, 'Direct messages are no longer available. Use the notice board.'))->whereNumber('student');
     Route::post('/groups/{group}/checklists', [\App\Http\Controllers\Academy\ChecklistController::class, 'open'])->whereNumber('group');
     Route::post('/groups/{group}/checklists/{cycle}/students/{student}', [\App\Http\Controllers\Academy\ChecklistController::class, 'save'])->whereNumber(['group','cycle','student']);
 

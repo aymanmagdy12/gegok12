@@ -80,6 +80,11 @@ class AcademyBackendTest extends TestCase
         (require database_path('migrations/2026_10_30_000002_create_academy_student_journeys.php'))->up();
         (require database_path('migrations/2026_10_30_000003_add_academy_group_lessons.php'))->up();
         Schema::create('settings', function (Blueprint $t) { $t->id(); $t->string('key'); $t->string('value'); $t->timestamps(); });
+        Schema::create('notice_board', function (Blueprint $t) {
+            $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('standardLink_id')->nullable();
+            $t->string('type'); $t->string('title'); $t->text('description'); $t->dateTime('publish_date')->nullable();
+            $t->dateTime('expire_date')->nullable(); $t->boolean('status')->default(1); $t->softDeletes(); $t->timestamps();
+        });
         Schema::create('homeworks', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('standardLink_id');
             $t->integer('subject_id'); $t->string('description'); $t->date('date'); $t->softDeletes();
@@ -1049,35 +1054,22 @@ class AcademyBackendTest extends TestCase
         try {
             app()->instance('request', Request::create('/learning/academy/dashboard', 'GET', ['student' => 7]));
             $html = view('academy.menu')->render();
-            $this->assertStringContainsString('Dashboard', $html); $this->assertStringContainsString('Select child', $html);
-            $this->assertStringContainsString('https://drive.google.com/second-child', $html);
+            $this->assertStringContainsString('Dashboard', $html); $this->assertStringNotContainsString('Select child', $html);
+            $this->assertStringNotContainsString('https://drive.google.com/second-child', $html);
             $this->assertStringNotContainsString('https://drive.google.com/first-child', $html);
             DB::table('student_parent_links')->where('parent_id', 4)->update(['deleted_at' => now()]);
             app()->instance('request', Request::create('/learning/academy/dashboard'));
-            $html = view('academy.menu')->render(); $this->assertStringContainsString('No student assigned to you yet.', $html);
+            $html = view('academy.menu')->render(); $this->assertStringContainsString('Dashboard', $html);
             $this->assertStringNotContainsString('https://drive.google.com/second-child', $html);
         } finally { app()->instance('request', $oldRequest); }
     }
 
-    public function test_messages_can_be_sent_and_replied_to_without_legacy_chat_dependencies(): void
+    public function test_retired_chat_redirects_and_cannot_create_messages(): void
     {
-        $dir = sys_get_temp_dir().'/academy-message-view-'.uniqid();
-        foreach (['layouts/teacher','academy'] as $path) { mkdir($dir.'/'.$path, 0777, true); }
-        foreach (['layouts/teacher/layout','academy/parent-layout'] as $path) { file_put_contents($dir.'/'.$path.'.blade.php', '@yield("content")'); }
-        view()->getFinder()->prependLocation($dir);
-        try {
-            $this->actingAs($this->actor(4, 7))->get('/learning/academy/messages/3')->assertOk()->assertSee('Send message');
-            $this->post('/learning/academy/messages/3', ['message' => 'Can we review the homework?'])->assertRedirect('/learning/academy/messages/3');
-            $this->actingAs($this->actor(2, 5))->get('/learning/academy/messages/3')->assertOk()->assertSee('Can we review the homework?');
-            $this->post('/learning/academy/messages/3', ['message' => 'Yes, we will review it.'])->assertRedirect('/learning/academy/messages/3');
-            $this->actingAs($this->actor(4, 7))->get('/learning/academy/messages/3')->assertOk()->assertSee('Yes, we will review it.');
-            $this->get('/learning/academy/messages/7')->assertNotFound();
-        } finally {
-            foreach (['layouts/teacher/layout','academy/parent-layout'] as $path) { unlink($dir.'/'.$path.'.blade.php'); }
-            foreach (['layouts/teacher','layouts','academy'] as $path) { rmdir($dir.'/'.$path); } rmdir($dir);
-        }
+        $this->actingAs($this->actor(4, 7))->get('/learning/academy/messages/3')->assertRedirect('/learning/academy/notices');
+        $this->post('/learning/academy/messages/3', ['message' => 'Do not create this'])->assertStatus(410);
+        $this->assertDatabaseCount('academy_learning_messages', 0);
     }
-
 
     public function test_new_roster_students_get_blank_slots_without_resetting_existing_marks(): void
     {
@@ -1112,6 +1104,67 @@ class AcademyBackendTest extends TestCase
         app(\App\Services\AcademyStudents::class)->unlinkParent($this->actor(1, 3), 7, 4);
         $request = Request::create('/learning/academy/dashboard'); $request->setLaravelSession($session);
         $this->assertSame(3, (int) $navigation->context($this->actor(4, 7), $request)['selected']->id);
+    }
+
+    public function test_notices_never_escape_tenant_audience_or_publication_window_even_with_search(): void
+    {
+        $base = ['school_id' => 10, 'academic_year_id' => 10, 'type' => 'school', 'title' => 'Common Arabic إعلان', 'description' => 'search-target', 'status' => 1];
+        DB::table('notice_board')->insert($base);
+        foreach ([['school_id'=>20], ['type'=>'teacher'], ['type'=>'class','standardLink_id'=>999], ['status'=>0], ['publish_date'=>now()->addDay()], ['expire_date'=>now()->subDay()], ['deleted_at'=>now()]] as $override) {
+            DB::table('notice_board')->insert(array_replace($base, $override));
+        }
+        DB::table('notice_board')->insert(array_replace($base, ['type'=>'class','standardLink_id'=>1]));
+        $service = app(\App\Services\AcademyNotices::class);
+        $this->assertCount(2, $service->query($this->actor(4,7), 'search-target', true)->get());
+        $this->assertCount(2, $service->query($this->actor(3,6), 'search-target')->get());
+        $this->assertCount(3, $service->query($this->actor(2,5), 'search-target')->get());
+        DB::table('student_parent_links')->where('parent_id',4)->update(['status'=>0]);
+        $this->assertCount(1, $service->query($this->actor(4,7))->get());
+    }
+
+    public function test_parent_dashboard_shows_all_own_children_links_without_selector_and_escapes_notices(): void
+    {
+        app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1,3),7,4);
+        foreach ([3,7] as $id) {
+            app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1,3),$id,['firstname'=>'Child '.$id,'email'=>'user'.$id.'@example.test','recordings_url'=>'https://drive.google.com/child-'.$id]);
+        }
+        // The real parent layout is rendered here, rather than replacing it with a test stub.
+        $this->actingAs($this->actor(4,7))->get('/learning/academy/dashboard')->assertOk()
+            ->assertSee('Parent dashboard')->assertSee('https://drive.google.com/child-3',false)->assertSee('https://drive.google.com/child-7',false)
+            ->assertDontSee('Select child')->assertDontSee('name="student"',false)->assertDontSee('Student conversation');
+        DB::table('notice_board')->insert(['school_id'=>10,'academic_year_id'=>10,'type'=>'school','title'=>'<script>alert(1)</script>','description'=>'<img src=x onerror=alert(1)> العربية','status'=>1]);
+        $this->get('/learning/academy/notices')->assertOk()->assertDontSee('<script>alert(1)</script>',false)->assertDontSee('<img src=x',false)->assertSee('العربية');
+        $this->get('/learning/academy/notices?q[]=bad')->assertSessionHasErrors('q');
+        DB::table('student_parent_links')->where('parent_id',4)->update(['status'=>0]);
+        $this->get('/learning/academy/dashboard')->assertOk()->assertSee('No student assigned to you yet.')->assertDontSee('https://drive.google.com/child-3',false);
+    }
+
+    public function test_teacher_menu_requires_no_student_selection_and_past_enrollment_is_not_in_roster(): void
+    {
+        Auth::setUser($this->actor(2,5)); $html = view('academy.menu')->render();
+        $this->assertStringNotContainsString('Selected student',$html);
+        $this->assertStringNotContainsString('/learning/academy/messages',$html);
+        $this->assertStringContainsString('Notice board',$html);
+        DB::table('student_academics')->where('user_id',3)->update(['academic_year_id'=>9]);
+        $this->assertCount(0, app(\App\Services\AcademyLessons::class)->roster($this->actor(2,5),1)->get());
+        $rosters = app(\App\Services\AcademyLessons::class)->rosterPreview($this->actor(2,5),[1]);
+        $this->assertCount(0,$rosters);
+    }
+
+    public function test_cache_clear_is_not_a_public_get_or_a_parent_action(): void
+    {
+        $this->get('/cache-clear')->assertStatus(405);
+        $this->actingAs($this->actor(4,7))->post('/cache-clear')->assertForbidden();
+        $this->actingAs($this->actor(1,3))->post('/cache-clear')->assertNoContent();
+    }
+
+    public function test_registration_accepts_age_four_and_rejects_sixteen_and_profile_uses_same_policy(): void
+    {
+        $service=app(\App\Services\AcademyStudents::class);
+        $id=$service->register($this->actor(1,3),['firstname'=>'طفل','email'=>'four@example.test','password'=>'LongSafePassword123!','date_of_birth'=>now()->subYears(4)->toDateString()]);
+        $this->assertDatabaseHas('userprofiles',['user_id'=>$id,'firstname'=>'طفل']);
+        $this->expectException(ValidationException::class);
+        $service->updateProfile($this->actor(1,3),$id,['firstname'=>'طفل','email'=>'four@example.test','date_of_birth'=>now()->subYears(16)->toDateString()]);
     }
 
 }

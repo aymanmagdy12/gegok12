@@ -30,7 +30,7 @@ class AcademyLessons
             ->where('m.group_id', $group)->where('m.member_type', 'student')->whereNull('m.deleted_at')
             ->where('u.school_id', $actor->school_id)->where('u.usergroup_id', 6)->where('u.status', 'active')->whereNull('u.deleted_at')
             ->whereExists(fn ($q) => $q->selectRaw('1')->from('student_academics as a')->whereColumn('a.user_id', 'u.id')
-                ->where('a.school_id', $actor->school_id)->where('a.standardLink_id', $record->standardLink_id)->whereNull('a.deleted_at'))
+                ->where('a.school_id', $actor->school_id)->where('a.standardLink_id', $record->standardLink_id)->where('a.academic_year_id', app(AcademyContext::class)->period((int) $actor->school_id)->id)->whereNull('a.deleted_at'))
             ->select('u.id', 'u.name', 'p.firstname', 'p.lastname')->distinct();
     }
 
@@ -44,7 +44,7 @@ class AcademyLessons
             ->whereNull('g.deleted_at')->whereNull('c.deleted_at')->whereNull('m.deleted_at')->where('m.member_type', 'student')
             ->where('u.usergroup_id', 6)->where('u.status', 'active')->whereNull('u.deleted_at')
             ->whereExists(fn ($q) => $q->selectRaw('1')->from('student_academics as a')->whereColumn('a.user_id', 'u.id')
-                ->whereColumn('a.standardLink_id', 'c.id')->whereNull('a.deleted_at'));
+                ->whereColumn('a.standardLink_id', 'c.id')->whereColumn('a.academic_year_id', 'c.academic_year_id')->where('a.school_id', $actor->school_id)->whereNull('a.deleted_at'));
         if ((int) $actor->usergroup_id === 5) { $query->whereIn('c.id', app(AcademyAssignments::class)->classIds($actor)); }
         return $query->orderBy('p.firstname')->get(['g.id as group_id', 'u.id', 'u.name', 'p.firstname', 'p.lastname'])->groupBy('group_id');
     }

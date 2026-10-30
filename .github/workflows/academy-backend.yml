@@ -2,7 +2,7 @@ name: Academy backend checks
 on:
   pull_request:
   push:
-    branches: ['fix/academy-backend', 'feature/academy-student-journey', 'feature/academy-group-lessons', 'feature/academy-teacher-workspace', 'feature/academy-dashboards-checklists']
+    branches: ['fix/academy-backend', 'feature/academy-student-journey', 'feature/academy-group-lessons', 'feature/academy-teacher-workspace', 'feature/academy-dashboards-checklists', 'fix/academy-group-flow']
   workflow_dispatch:
 permissions:
   contents: read
@@ -70,3 +70,16 @@ jobs:
       - name: Test academy backend
         run: php artisan test --filter=AcademyBackendTest
 
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install existing Mix toolchain
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Build existing frontend without publishing assets
+        run: npm run production
