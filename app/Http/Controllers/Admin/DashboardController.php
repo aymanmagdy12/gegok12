@@ -51,6 +51,7 @@ class DashboardController extends Controller
     */
     public function index(Request $request) 
     {
+        if (config('academy_backend.enabled')) { return redirect('/learning/academy/dashboard'); }
 
         // Cache invalidation belongs to writes/deployment, never a dashboard GET.
         

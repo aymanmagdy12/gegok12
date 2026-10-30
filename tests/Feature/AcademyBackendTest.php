@@ -292,14 +292,14 @@ class AcademyBackendTest extends TestCase
         $this->assertDatabaseCount('users', 7);
     }
 
-    public function test_real_login_accepts_the_four_core_roles_and_keeps_the_existing_redirect(): void
+    public function test_real_login_accepts_the_four_core_roles_and_opens_the_dashboard(): void
     {
         \Illuminate\Support\Facades\Event::fake([\Illuminate\Auth\Events\Login::class]);
         config(['hashing.bcrypt.rounds' => 4]);
         foreach ([1, 2, 3, 4] as $id) {
             DB::table('users')->where('id', $id)->update(['password' => \Illuminate\Support\Facades\Hash::make('correct-password')]);
             $this->post('/login', ['email' => 'user'.$id.'@example.test', 'password' => 'correct-password'])
-                ->assertRedirect('/learning/academy');
+                ->assertRedirect('/learning/academy/dashboard');
             $this->assertSame($id, (int) Auth::id());
             Auth::logout();
         }
@@ -1222,7 +1222,7 @@ class AcademyBackendTest extends TestCase
         if (getenv('CI') !== 'true' || getenv('ACADEMY_BROWSER_EXPORT') !== '1' || config('database.default') !== 'sqlite') {
             $this->assertTrue(true); return;
         }
-        foreach ([2,3,4] as $id) { DB::table('users')->where('id',$id)->update(['password'=>\Illuminate\Support\Facades\Hash::make('IsolatedBrowserTest123!')]); }
+        foreach ([1,2,3,4] as $id) { DB::table('users')->where('id',$id)->update(['password'=>\Illuminate\Support\Facades\Hash::make('IsolatedBrowserTest123!')]); }
         DB::table('settings')->insert(['key'=>'login_status','value'=>'1']);
         app(\App\Services\AcademyStudents::class)->linkParent($this->actor(1,3),7,4);
         foreach ([3,7] as $id) { app(\App\Services\AcademyStudents::class)->updateProfile($this->actor(1,3),$id,['firstname'=>'Account','lastname'=>(string)$id,'email'=>'user'.$id.'@example.test','recordings_url'=>'https://drive.google.com/fixture-'.$id]); }
@@ -1261,7 +1261,7 @@ class AcademyBackendTest extends TestCase
     {
         config(['queue.default'=>'sync','academy_backend.login_email_notifications'=>false]);
         DB::table('users')->where('id',2)->update(['password'=>\Illuminate\Support\Facades\Hash::make('IsolatedBrowserTest123!')]);
-        $this->post('/login',['email'=>'user2@example.test','password'=>'IsolatedBrowserTest123!'])->assertRedirect('/learning/academy');
+        $this->post('/login',['email'=>'user2@example.test','password'=>'IsolatedBrowserTest123!'])->assertRedirect('/learning/academy/dashboard');
         $this->assertAuthenticated();
         $this->assertDatabaseHas('activity_log',['causer_id'=>2,'description'=>'Logged In']);
     }
@@ -1277,6 +1277,27 @@ class AcademyBackendTest extends TestCase
         $result=app(\App\Http\Controllers\Admin\NoticeBoardController::class)->store($request);
         $this->assertArrayHasKey('success',$result); $this->assertSame(0,$attempts);
         $this->assertDatabaseHas('notice_board',['title'=>'إعلان الأكاديمية']);
+    }
+
+    public function test_admin_dashboard_is_separate_from_students_and_counts_only_own_academy(): void
+    {
+        $admin=\App\Models\User::without(['members','children','parents'])->findOrFail(1);
+        $response=$this->actingAs($admin)->get('/learning/academy/dashboard');
+        $response->assertOk()->assertSee('Admin dashboard')->assertSee('Recent learning activity');
+        $this->assertEquals(2,$response->viewData('counts')->get(6));
+        $this->assertEquals(2,$response->viewData('counts')->get(5));
+        $this->assertEquals(1,$response->viewData('groups'));
+        $this->get('/admin/dashboard')->assertRedirect('/learning/academy/dashboard');
+        $this->get('/learning/academy')->assertOk()->assertDontSee('Admin dashboard');
+    }
+
+    public function test_dashboard_menu_links_to_dashboard_and_the_entire_row_is_clickable(): void
+    {
+        foreach ([[1,3],[2,5],[4,7],[3,6]] as [$id,$role]) {
+            Auth::setUser($this->actor($id,$role)); $html=view('academy.menu')->render();
+            $this->assertStringContainsString('/learning/academy/dashboard',$html);
+            $this->assertStringContainsString('class="flex items-center py-3 px-3"',$html);
+        }
     }
 
 }

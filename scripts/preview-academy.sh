@@ -7,11 +7,12 @@ test -f artisan
 test -f .env
 command -v php >/dev/null
 command -v composer >/dev/null
+command -v npm >/dev/null
 academy_backup=""
 trap 'printf "\nUpdate stopped. Your .env and database were not reset. Code backup stash: %s\nSend the error above before retrying.\n" "${academy_backup:-none needed}"' ERR
 
 git fetch origin
-academy_target="$(git rev-parse refs/remotes/origin/feature/academy-dashboards-checklists)"
+academy_target="$(git rev-parse refs/remotes/origin/fix/academy-group-flow)"
 if [[ -n "$(git status --porcelain)" ]]; then
     git stash push --include-untracked -m "Before connected academy preview $(date -u +%Y%m%dT%H%M%SZ)"
     academy_backup="$(git rev-parse refs/stash)"
@@ -32,4 +33,7 @@ php artisan migrate --force
 php artisan config:clear
 php artisan route:clear
 php artisan view:clear
-printf '\nAcademy preview updated. Open your existing website at /learning/academy and refresh.\nNo student data was reseeded. Your code backup stash is retained.\n'
+printf '\nBuilding current browser assets. Wait for this step to finish before testing.\n'
+npm install --legacy-peer-deps --no-audit --no-fund --no-progress
+npm run production
+printf '\nAcademy preview updated. Open your existing website at /learning/academy/dashboard and refresh.\nNo student data was reseeded. Your code backup stash is retained.\n'

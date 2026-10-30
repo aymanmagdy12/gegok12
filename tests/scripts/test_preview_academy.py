@@ -37,18 +37,18 @@ class PreviewUpdaterTest(unittest.TestCase):
             git(seed, "remote", "add", "origin", str(remote))
             git(seed, "push", "origin", "main")
             git(root, "clone", "--branch", "main", str(remote), str(work))
-            git(seed, "switch", "-c", "feature/academy-dashboards-checklists")
+            git(seed, "switch", "-c", "fix/academy-group-flow")
             (seed / "journey.php").write_text("new academy code\n")
             git(seed, "add", ".")
             git(seed, "commit", "-m", "academy workflow")
-            git(seed, "push", "origin", "feature/academy-dashboards-checklists")
+            git(seed, "push", "origin", "fix/academy-group-flow")
 
             (work / ".env").write_text("APP_NAME=ExistingAcademy\n")
             (work / "provider.php").write_text("local preview URL fix\n")
             (work / "public/app.css").write_text("locally compiled CSS\n")
             (work / "local-backup.txt").write_text("keep untracked files\n")
             command_log = root / "commands.log"
-            for executable in ("php", "composer"):
+            for executable in ("php", "composer", "npm"):
                 target = binaries / executable
                 target.write_text('#!/bin/sh\nprintf "%s %s\\n" "'+executable+'" "$*" >> "$ACADEMY_COMMAND_LOG"\n')
                 target.chmod(0o755)
@@ -74,8 +74,18 @@ class PreviewUpdaterTest(unittest.TestCase):
             self.assertEqual("", git(work, "status", "--porcelain"))
             commands = command_log.read_text()
             self.assertEqual(2, commands.count("php artisan migrate --force"))
+            self.assertEqual(2, commands.count("npm run production"))
+            self.assertIn("npm install --legacy-peer-deps", commands)
             self.assertNotIn("migrate:fresh", commands)
             self.assertNotIn("db:seed", commands)
+            # Never announce completion when the current browser assets could not be built.
+            (binaries / "npm").write_text("#!/bin/sh\nexit 1\n")
+            failed = subprocess.run(["bash", str(SCRIPT)], cwd=work, env=env, text=True, capture_output=True)
+            self.assertNotEqual(0, failed.returncode)
+            self.assertNotIn("Academy preview updated.", failed.stdout)
+            self.assertIn("Update stopped.", failed.stdout)
+            self.assertEqual("APP_NAME=ExistingAcademy\n", (work / ".env").read_text())
+
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 <nav class="navbar bg-white w-full flex  lg:flex-row px-4 lg:px-8 py-2 justify-between items-center">
   <div class="nav-brand flex items-center">
     @if(\Auth::user())
-      <button class="block lg:hidden md:hidden mr-3" onclick="showsidebar('res_sidebar')">
+      <button type="button" class="block lg:hidden md:hidden mr-3" data-academy-menu-toggle aria-controls="res_sidebar" aria-expanded="false" onclick="academyToggleNavigation('res_sidebar')">
         <span class="navbar-toggler-icon">
           <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path class="heroicon-ui" d="M4 5h16a1 1 0 0 1 0 2H4a1 1 0 1 1 0-2zm0 6h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2zm0 6h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z"/></svg>
         </span>

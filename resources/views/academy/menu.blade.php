@@ -1,6 +1,6 @@
 @php
     $academyRole = (int) auth()->user()->usergroup_id;
-    $academyLinks = ['Dashboard' => $academyRole === 3 ? '/learning/academy' : '/learning/academy/dashboard'];
+    $academyLinks = ['Dashboard' => '/learning/academy/dashboard'];
     if (in_array($academyRole, [3, 5])) { $academyLinks[$academyRole === 5 ? 'My groups' : 'Groups & teachers'] = '/learning/academy/groups'; }
     if (in_array($academyRole, [3, 7])) { $academyLinks[$academyRole === 7 ? 'My children' : 'Students & progress'] = $academyRole === 7 ? '/learning/academy/dashboard' : '/learning/academy'; }
     $academyLinks['Notice board'] = '/learning/academy/notices';
@@ -18,7 +18,7 @@
 @endphp
 <ul v-pre class="list-reset text-sm">
 @foreach($academyLinks as $label => $path)
-    <li class="py-3 px-3 hover:bg-purple-900 {{ request()->getPathInfo() === $path ? 'active' : '' }}"><a href="{{ url($path) }}" class="flex items-center"><span class="mx-3 whitespace-no-wrap">{{ $label }}</span></a></li>
+    <li class="hover:bg-purple-900 {{ request()->getPathInfo() === $path ? 'active' : '' }}"><a href="{{ url($path) }}" class="flex items-center py-3 px-3"><span class="mx-3 whitespace-no-wrap">{{ $label }}</span></a></li>
 @endforeach
 </ul>
 @if($academyRole === 6)
