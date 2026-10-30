@@ -162,7 +162,7 @@ class NoticeBoardController extends Controller
                 $data['type']           =   'notice';
                // $data['notice_type']    =   'class';
 
-                event(new StandardPushEvent($data));
+                $this->notifyNotice(new StandardPushEvent($data));
 
                 $array = [];
 
@@ -170,7 +170,7 @@ class NoticeBoardController extends Controller
                 $array['standardLink_id']   = $notice->standardLink_id;
                 $array['details']           = trans('notification.notice_add_success_msg');  
 
-                event(new ClassNotificationEvent($array)); 
+                $this->notifyNotice(new ClassNotificationEvent($array)); 
             }
             elseif($request->type == 'school')
             {
@@ -181,14 +181,14 @@ class NoticeBoardController extends Controller
                 $data['type']       =   'notice';
                // $data['notice_type']=   'school';
 
-                event(new PushEvent($data));
+                $this->notifyNotice(new PushEvent($data));
 
                 $array = [];
 
                 $array['school_id'] = Auth::user()->school_id;
                 $array['details'] = trans('notification.notice_add_success_msg');
             
-                event(new SchoolNotificationEvent($array));
+                $this->notifyNotice(new SchoolNotificationEvent($array));
             }
             elseif($request->type == 'teacher')
             {
@@ -198,14 +198,14 @@ class NoticeBoardController extends Controller
                 $data['message']    =   'New Notice Added';
                 $data['type']       =   'notice';
 
-                event(new TeacherPushEvent($data));
+                $this->notifyNotice(new TeacherPushEvent($data));
 
                 $array = [];
 
                 $array['school_id'] = Auth::user()->school_id;
                 $array['details'] = trans('notification.notice_add_success_msg');
             
-                event(new TeacherNotificationEvent($array));
+                $this->notifyNotice(new TeacherNotificationEvent($array));
             }
 
             $message=trans('messages.add_success_msg',['module' => 'Notice']);
@@ -215,7 +215,7 @@ class NoticeBoardController extends Controller
             $this->doActivityLog(
                 $notice,
                 Auth::user(),
-                ['ip' => $ip, 'details' => $_SERVER['HTTP_USER_AGENT'] ],
+                ['ip' => $ip, 'details' => ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown client') ],
                 LOGNAME_ADD_NOTICE,
                 $message
             );
@@ -366,7 +366,7 @@ class NoticeBoardController extends Controller
                 $data['message']        =   'Notice Updated';
                 $data['type']           =   'notice';
 
-                event(new StandardPushEvent($data));
+                $this->notifyNotice(new StandardPushEvent($data));
 
                 $array = [];
 
@@ -374,7 +374,7 @@ class NoticeBoardController extends Controller
                 $array['standardLink_id']   = $notice->standardLink_id;
                 $array['details']           = trans('notification.notice_update_success_msg');  
 
-                event(new ClassNotificationEvent($array)); 
+                $this->notifyNotice(new ClassNotificationEvent($array)); 
             }
             elseif($request->type == 'school')
             {
@@ -384,14 +384,14 @@ class NoticeBoardController extends Controller
                 $data['message']    =   'Notice Updated';
                 $data['type']       =   'notice';
 
-                event(new PushEvent($data));
+                $this->notifyNotice(new PushEvent($data));
 
                 $array = [];
 
                 $array['school_id'] = Auth::user()->school_id;
                 $array['details'] = trans('notification.notice_update_success_msg');
             
-                event(new SchoolNotificationEvent($array));
+                $this->notifyNotice(new SchoolNotificationEvent($array));
             }
             elseif($request->type == 'teacher')
             {
@@ -401,14 +401,14 @@ class NoticeBoardController extends Controller
                 $data['message']    =   'Notice Updated';
                 $data['type']       =   'notice';
 
-                event(new TeacherPushEvent($data));
+                $this->notifyNotice(new TeacherPushEvent($data));
 
                 $array = [];
 
                 $array['school_id'] = Auth::user()->school_id;
                 $array['details'] = trans('notification.notice_update_success_msg');
             
-                event(new TeacherNotificationEvent($array));
+                $this->notifyNotice(new TeacherNotificationEvent($array));
             }
 
             $message=trans('messages.update_success_msg',['module' => 'Notice']);
@@ -416,7 +416,7 @@ class NoticeBoardController extends Controller
             $this->doActivityLog(
                 $notice,
                 Auth::user(),
-                ['ip' => $ip, 'details' => $_SERVER['HTTP_USER_AGENT'] ],
+                ['ip' => $ip, 'details' => ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown client') ],
                 LOGNAME_EDIT_NOTICE,
                 $message
             );
@@ -453,7 +453,7 @@ class NoticeBoardController extends Controller
                 $this->doActivityLog(
                     $notice,
                     Auth::user(),
-                    ['ip' => $ip, 'details' => $_SERVER['HTTP_USER_AGENT'] ],
+                    ['ip' => $ip, 'details' => ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown client') ],
                     LOGNAME_DELETE_NOTICE,
                     $message
                 );
@@ -471,4 +471,10 @@ class NoticeBoardController extends Controller
             throw $e; // Laravel reports the exception and returns an error, never a false success.
         }
     }
+    private function notifyNotice(object $event): void
+    {
+        if (config('academy_backend.enabled') && !config('academy_backend.notice_notifications')) { return; }
+        try { event($event); } catch (\Throwable $error) { report($error); }
+    }
+
 }

@@ -45,6 +45,8 @@ Authentication/logout/reset password; admin registration of student/parent/teach
 
 | 22 | High | `resources/views/layouts/empty.blade.php:head scripts` | Login scripts execute before `body`/`#app` exist. Chromium observed a null `appendChild` error; defer execution while preserving script order. |
 
+| 23 | High | `app/Http/Controllers/Admin/NoticeBoardController.php:store/update notifications` | Saving a notice depends on optional external push/notification integrations; delivery errors can return 500 after the notice was already saved. Academy delivery is opt-in and failures are reported independently of notice persistence. |
+
 Potential issues require evidence before changes: large legacy JavaScript bundle, optional addon routes, live URL/proxy configuration, SMTP credentials and real parent-account layout. No assumption that a development-server HTTP 200 proves the public tunnel or authenticated dashboard works.
 
 ## Verification boundaries

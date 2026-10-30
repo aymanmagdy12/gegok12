@@ -87,7 +87,7 @@ class AcademyBackendTest extends TestCase
         Schema::create('school_details', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('school_id'); $t->string('meta_key'); $t->string('meta_value')->nullable(); $t->timestamps(); $t->softDeletes(); });
         Schema::create('notice_board', function (Blueprint $t) {
             $t->id(); $t->unsignedBigInteger('school_id'); $t->integer('academic_year_id'); $t->integer('standardLink_id')->nullable();
-            $t->string('type'); $t->string('title'); $t->text('description'); $t->string('attachment_file')->nullable(); $t->dateTime('publish_date')->nullable();
+            $t->string('type'); $t->string('title'); $t->text('description'); $t->string('attachment_file')->nullable(); $t->integer('background_id')->nullable(); $t->dateTime('publish_date')->nullable();
             $t->dateTime('expire_date')->nullable(); $t->boolean('status')->default(1); $t->softDeletes(); $t->timestamps();
         });
         Schema::create('homeworks', function (Blueprint $t) {
@@ -1264,6 +1264,19 @@ class AcademyBackendTest extends TestCase
         $this->post('/login',['email'=>'user2@example.test','password'=>'IsolatedBrowserTest123!'])->assertRedirect('/learning/academy');
         $this->assertAuthenticated();
         $this->assertDatabaseHas('activity_log',['causer_id'=>2,'description'=>'Logged In']);
+    }
+
+    public function test_notice_save_does_not_require_optional_notification_credentials(): void
+    {
+        $admin=\App\Models\User::without(['members','children','parents'])->findOrFail(1); Auth::setUser($admin);
+        config(['academy_backend.notice_notifications'=>false]); $attempts=0;
+        \Illuminate\Support\Facades\Event::listen(\App\Events\PushEvent::class,function () use (&$attempts) { $attempts++; throw new \RuntimeException('Fixture notification delivery failed'); });
+        $data=['type'=>'school','title'=>'إعلان الأكاديمية','description'=>'Notice without SMTP or Firebase','publish_date'=>now()->toDateTimeString(),'expire_date'=>now()->addDay()->toDateTimeString()];
+        $request=\App\Http\Requests\NoticeRequest::create('/admin/notice/add','POST',$data); $request->setUserResolver(fn ()=>$admin);
+        $this->assertFalse(\Illuminate\Support\Facades\Validator::make($data,$request->rules())->fails());
+        $result=app(\App\Http\Controllers\Admin\NoticeBoardController::class)->store($request);
+        $this->assertArrayHasKey('success',$result); $this->assertSame(0,$attempts);
+        $this->assertDatabaseHas('notice_board',['title'=>'إعلان الأكاديمية']);
     }
 
 }
