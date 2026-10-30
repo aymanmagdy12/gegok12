@@ -64,7 +64,11 @@ const assert = require('node:assert/strict');
         // Exercise the actual sidebar hit area, including padding, rather than a direct URL.
         if(width<768) await page.locator('button[onclick*="showsidebar"]').first().click();
         const menu=page.locator(width<768 ? '#res_sidebar' : '.sidebar .header-wrapper-b');
-        await menu.getByRole('link',{name:'Dashboard',exact:true}).first().click({position:{x:8,y:8}});
+        const dashboardLink=menu.getByRole('link',{name:'Dashboard',exact:true}).first();
+        await dashboardLink.waitFor({state:'visible'});
+        const rowBox=await dashboardLink.locator('..').boundingBox();
+        assert.ok(rowBox);
+        await page.mouse.click(rowBox.x+8,rowBox.y+8);
         await page.waitForURL('**/learning/academy/dashboard');
         await page.getByRole('heading',{name:`${role} dashboard`,exact:true}).waitFor();
         row.dashboardClick='pass';
