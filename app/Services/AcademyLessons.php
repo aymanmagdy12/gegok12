@@ -55,7 +55,7 @@ class AcademyLessons
         $data = Validator::make($input, ['students' => 'required|array|min:1|max:100', 'students.*' => 'required|integer|distinct', 'agree_starting_level' => 'nullable|boolean'])->validate();
         DB::transaction(function () use ($actor, $group, $data) {
             $g = $this->group($actor, $group);
-            abort_unless($g->level, 422, 'Set this group’s course level first.');
+            if (!$g->level) { throw ValidationException::withMessages(['group' => 'Set this group’s course level under Groups & teachers first.']); }
             foreach ($data['students'] as $student) {
                 $service = app(AcademyStudents::class);
                 $journey = $service->journey($actor, (int) $student);
