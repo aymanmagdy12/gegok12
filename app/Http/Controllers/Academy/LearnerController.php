@@ -173,7 +173,8 @@ class LearnerController extends Controller
         $groups = $query->orderBy('g.group_name')->paginate(25, ['g.id', 'g.group_name', 'g.standardLink_id', 'c.class_teacher_id', 'settings.level', 'settings.schedule', 'settings.meeting_days', 'settings.start_time', 'settings.end_time', 'teacher.firstname as teacher_name']);
         $teachers = (int) $actor->usergroup_id === 3 ? DB::table('users as u')->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'u.id')->whereNull('p.deleted_at'); })
             ->where('u.school_id', $actor->school_id)->where('u.usergroup_id', 5)->where('u.status', 'active')->whereNull('u.deleted_at')->orderBy('p.firstname')->get(['u.id', 'u.email', 'p.firstname', 'p.lastname']) : collect();
-        return view('academy.groups', compact('groups', 'teachers') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
+        $groupStudents = app(\App\Services\AcademyLessons::class)->rosterPreview($actor, $groups->pluck('id')->all());
+        return view('academy.groups', compact('groups', 'teachers', 'groupStudents') + ['layout' => $this->layout($actor), 'role' => (int) $actor->usergroup_id]);
     }
 
     public function saveGroup(Request $request, ?int $group = null)

@@ -34,6 +34,21 @@ class AcademyLessons
             ->select('u.id', 'u.name', 'p.firstname', 'p.lastname')->distinct();
     }
 
+    public function rosterPreview(object $actor, array $groups)
+    {
+        abort_unless(in_array((int) $actor->usergroup_id, [3, 5], true), 403);
+        $query = DB::table('group_members as m')->join('groups as g', 'g.id', '=', 'm.group_id')
+            ->join('standards_link as c', 'c.id', '=', 'g.standardLink_id')->join('users as u', 'u.id', '=', 'm.member_id')
+            ->leftJoin('userprofiles as p', function ($j) { $j->on('p.user_id', '=', 'u.id')->whereNull('p.deleted_at'); })
+            ->whereIn('g.id', $groups)->where('c.school_id', $actor->school_id)->where('u.school_id', $actor->school_id)
+            ->whereNull('g.deleted_at')->whereNull('c.deleted_at')->whereNull('m.deleted_at')->where('m.member_type', 'student')
+            ->where('u.usergroup_id', 6)->where('u.status', 'active')->whereNull('u.deleted_at')
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('student_academics as a')->whereColumn('a.user_id', 'u.id')
+                ->whereColumn('a.standardLink_id', 'c.id')->whereNull('a.deleted_at'));
+        if ((int) $actor->usergroup_id === 5) { $query->whereIn('c.id', app(AcademyAssignments::class)->classIds($actor)); }
+        return $query->orderBy('p.firstname')->get(['g.id as group_id', 'u.id', 'u.name', 'p.firstname', 'p.lastname'])->groupBy('group_id');
+    }
+
     public function addStudents(object $actor, int $group, array $input): void
     {
         app(AcademyStudents::class)->admin($actor);

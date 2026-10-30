@@ -669,12 +669,35 @@ class AcademyBackendTest extends TestCase
                 $this->assertSame($role === 3, str_contains($html, 'Add existing students'));
                 $html = $controller->show($request, 1, app(\App\Services\AcademyLessons::class), $lesson)->render();
                 $this->assertStringContainsString('Attendance', $html); $this->assertStringContainsString('Homework', $html);
-                $this->assertSame($role === 5, str_contains($html, 'Save attendance &amp; homework'));
+                $this->assertSame($role === 5, str_contains($html, 'Save attendance & homework'));
             }
         } finally {
             foreach (['layouts/admin', 'layouts/teacher'] as $path) { unlink($dir.'/'.$path.'/layout.blade.php'); rmdir($dir.'/'.$path); }
             rmdir($dir.'/layouts'); rmdir($dir);
         }
+    }
+
+
+    public function test_teacher_dashboard_roster_previews_exclude_other_groups_students(): void
+    {
+        $group = app(AcademyGroups::class)->create(10, ['group_name' => 'Other teacher group', 'level' => 1, 'teacher_id' => 5]);
+        app(AcademyGroups::class)->enroll(10, $group->id, [7]);
+        $preview = app(\App\Services\AcademyLessons::class)->rosterPreview($this->actor(2, 5), [1, $group->id]);
+        $this->assertSame([3], $preview->get(1)->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $this->assertFalse($preview->has($group->id));
+        $request = Request::create('/learning/academy/groups'); $request->setUserResolver(fn () => $this->actor(2, 5));
+        $view = app(\App\Http\Controllers\Academy\LearnerController::class)->groups($request);
+        $this->assertSame(1, $view->getData()['groups']->total());
+        $this->assertSame([1], $view->getData()['groupStudents']->keys()->map(fn ($id) => (int) $id)->all());
+    }
+
+    public function test_structured_schedule_requires_valid_days_and_start_time(): void
+    {
+        $request = Request::create('/learning/academy/groups/1', 'POST', ['group_name' => 'Group A', 'level' => 1, 'teacher_id' => 2,
+            'structured_schedule' => 1, 'meeting_days' => ['Not a weekday']]);
+        $request->setUserResolver(fn () => $this->actor(1, 3));
+        $this->expectException(ValidationException::class);
+        app(\App\Http\Controllers\Academy\LearnerController::class)->saveGroup($request, 1);
     }
 
 }
