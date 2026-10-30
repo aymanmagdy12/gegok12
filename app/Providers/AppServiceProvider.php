@@ -48,12 +48,6 @@ class AppServiceProvider extends ServiceProvider {
     */
 
     public function boot() {
-        foreach ([\App\Models\StandardLink::class => 'id', \App\Models\StudentAcademic::class => 'standardLink_id',
-            \App\Models\Homework::class => 'standardLink_id', \App\Models\Assignment::class => 'standardLink_id',
-            \App\Models\Teacherlink::class => 'standardLink_id'] as $model => $column) {
-            $model::addGlobalScope(new \App\Models\Scopes\AcademyTeacherScope($column));
-        }
-
 
         if (app()->environment('production') && !app()->runningInConsole()) {
             $host = request()->getHost();
@@ -94,6 +88,12 @@ class AppServiceProvider extends ServiceProvider {
                 return false;
             }
         });
+
+        foreach ([\App\Models\StandardLink::class => 'id', \App\Models\StudentAcademic::class => 'standardLink_id',
+            \App\Models\Homework::class => 'standardLink_id', \App\Models\Assignment::class => 'standardLink_id',
+            \App\Models\Teacherlink::class => 'standardLink_id'] as $model => $column) {
+            $model::addGlobalScope(new \App\Models\Scopes\AcademyTeacherScope($column));
+        }
 
         Events::observe( EventObserver::class );
         Bulletin::observe( BulletinObserver::class );

@@ -281,9 +281,13 @@ trait Dashboard
         $array = [];
 
         $academic_year = SiteHelper::getAcademicYear($school_id);
-        $teacher = TeacherUser::without(['members', 'children', 'parents'])->where('school_id', $school_id)->findOrFail($teacher_id);
-        $teacherlinks = $teacher->teacherlink()->where('academic_year_id', $academic_year->id)
-            ->without('teacher')->with(['subject', 'standardLink'])->get();
+        $teacher = TeacherUser::without(['members', 'children', 'parents'])->where('school_id', $school_id)
+            ->findOrFail($teacher_id);
+        $teacherlinks = $teacher->teacherlink()
+            ->where('academic_year_id', $academic_year->id)
+            ->without('teacher')
+            ->with(['subject', 'standardLink'])
+            ->get();
 
         $teachersubjects = [];
         foreach ($teacherlinks as $teacherlink) 
