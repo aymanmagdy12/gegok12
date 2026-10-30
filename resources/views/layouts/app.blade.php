@@ -42,7 +42,7 @@
 
     </head>
     <body class="font-primary antialiased min-h-screen overflow-x-hidden">
-        <div id="app">
+        <div id="app" @if(request()->is('learning/academy*')) data-academy-native @endif>
             @yield('base-navigation')
             <main class="flex w-full h-full min-h-screen">
                 <div class="sidebar min-h-full">
